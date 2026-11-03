@@ -9,6 +9,18 @@ import {
 } from "@/lib/cliprd/money";
 import type { Balance, Clip, Profile, RankRow, ReportTable } from "@/lib/cliprd/types";
 import { classifyYoutube, parseClipUrl, parseIsoDuration } from "@/lib/cliprd/urls";
+import { getRequest } from "@tanstack/react-start/server";
+import {
+  buildTikTokAuth,
+  exchangeTikTokCode,
+  fetchOembed,
+  loadIntegrations,
+  readTikTokPublic,
+  refreshTikTokToken,
+  tiktokProfile,
+  tiktokVideoPages,
+  type TikTokVideo,
+} from "./platforms.server";
 
 const CLIP_FROM = `
   from clips c
@@ -22,7 +34,7 @@ const CLIP_FIELDS = `
   c.availability, c.stats_source, c.stats_verified, c.public_views, c.valid_views,
   c.billed_views, c.views_locked, c.likes, c.comments, c.shares, c.flags,
   to_char(c.stats_updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as stats_updated_at,
-  c.stats_error, c.rejection_reason,
+  c.stats_error, c.rejection_reason, c.thumbnail_url,
   to_char(c.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at,
   coalesce((select sum(e.amount) from earnings e where e.clip_id = c.id), 0)::text as earning
 `;
@@ -57,6 +69,7 @@ type ClipRow = {
   stats_updated_at: string | null;
   stats_error: string | null;
   rejection_reason: string | null;
+  thumbnail_url: string | null;
   earning: string;
   created_at: string;
 };
@@ -132,6 +145,7 @@ function mapClip(row: ClipRow): Clip {
     statsUpdatedAt: row.stats_updated_at,
     statsError: row.stats_error,
     rejectionReason: row.rejection_reason,
+    thumbnailUrl: row.thumbnail_url,
     earning: row.earning,
     createdAt: row.created_at,
   };
@@ -343,8 +357,16 @@ type YtItem = {
 };
 
 async function youtubeList(sql: Sql, ids: string[]): Promise<{ items: YtItem[] } | { error: string }> {
-  const key = process.env.YOUTUBE_API_KEY;
-  if (!key) return { error: "YOUTUBE_API_KEY no está configurada en el servidor." };
+  const key = loadIntegrations().youtubeKey;
+  if (!key) {
+    const state = loadIntegrations().youtube;
+    return {
+      error:
+        state === "placeholder"
+          ? "YOUTUBE_API_KEY es un marcador, no una clave de Google Cloud. No se consultó videos.list."
+          : "YOUTUBE_API_KEY no está configurada en el servidor.",
+    };
+  }
   const quota = await sql<{ used: number }>`
     select case when youtube_quota_day = current_date then youtube_quota_used else 0 end as used
     from agency_settings where id = 1
@@ -483,13 +505,24 @@ export async function runScheduledSync(): Promise<{ synced: number; errors: stri
      limit 25`,
     [String(minutes)],
   );
-  return syncRows(sql, rows.map(mapClip), "cron");
+  return syncRows(sql, rows.map(mapClip), "cron").then(async (youtube) => {
+    if (!loadIntegrations().tiktok) return youtube;
+    const links = await sql<{ user_id: string }>`select user_id from tiktok_connections`;
+    let synced = youtube.synced;
+    const errors = [...youtube.errors];
+    for (const link of links) {
+      const result = await syncUserTikTok(sql, link.user_id, "cron");
+      synced += result.synced;
+      errors.push(...result.errors);
+    }
+    return { synced, errors };
+  });
 }
 
 async function syncRows(sql: Sql, clips: Clip[], actorId: string) {
   const errors: string[] = [];
-  if (!process.env.YOUTUBE_API_KEY) {
-    return { synced: 0, errors: ["YOUTUBE_API_KEY no está configurada. No se inventaron estadísticas."] };
+  if (!loadIntegrations().youtubeKey) {
+    return { synced: 0, errors: ["YouTube no está listo. No se inventaron estadísticas."] };
   }
   const youtube = clips.filter((clip) => clip.provider === "youtube");
   let synced = 0;
@@ -755,6 +788,8 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
     let publicViews = 0;
     let likes: number | null = null;
     let comments: number | null = null;
+    let shares: number | null = null;
+    let thumbnail: string | null = null;
     let availability = "unknown";
     let statsSource = "none";
     let statsVerified = false;
@@ -774,12 +809,14 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
         }
       }
       const api = await youtubeList(sql, [parsed.videoId]);
+      thumbnail = `https://i.ytimg.com/vi/${parsed.videoId}/hqdefault.jpg`;
       if ("error" in api) {
         statsError = api.error;
         warnings.push("Sin YouTube Data API no hay reproducciones verificadas. El clip queda pendiente.");
-        const embed = await oembed(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(parsed.normalized)}`);
+        const embed = await fetchOembed(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(parsed.normalized)}`);
         if (embed?.title) title = title || embed.title;
         if (embed?.author_name) channel = embed.author_name;
+        if (embed?.thumbnail_url) thumbnail = embed.thumbnail_url;
         if (embed) statsSource = "oembed";
       } else {
         const item = api.items[0];
@@ -815,13 +852,37 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
         }
       }
     } else {
-      const embed = await oembed(`https://www.tiktok.com/oembed?url=${encodeURIComponent(parsed.normalized)}`);
-      if (embed?.title) title = title || embed.title;
-      if (embed?.author_name) channel = embed.author_name;
-      if (embed) statsSource = "oembed";
-      statsError = "TikTok no entregó reproducciones. oEmbed solo confirma título y autor, no vistas.";
-      warnings.push("Las reproducciones de TikTok no están verificadas. No se suman como vistas válidas.");
-      if (!parsed.videoId) warnings.push("No se pudo resolver el ID del video. Se guardó una huella del enlace.");
+      const official = parsed.videoId ? await lookupTikTokVideo(sql, context.userId, parsed.videoId) : null;
+      if (official) {
+        title = title || official.title || "";
+        thumbnail = official.cover_image_url ?? null;
+        duration = official.duration ?? null;
+        publicViews = Number(official.view_count ?? 0);
+        likes = official.like_count ?? null;
+        comments = official.comment_count ?? null;
+        shares = official.share_count ?? null;
+        availability = "public";
+        statsSource = "tiktok_api";
+        statsVerified = true;
+        warnings.push("Vistas leídas con TikTok video.list. Se liquidan al aprobar, no al registrar.");
+      } else {
+        const pub = await readTikTokPublic(parsed.normalized);
+        if (pub.title) title = title || pub.title;
+        if (pub.author) channel = pub.author;
+        if (pub.thumbnail) thumbnail = pub.thumbnail;
+        if (pub.title || pub.author || pub.thumbnail) statsSource = "oembed";
+        if (pub.views != null) {
+          publicViews = pub.views;
+          statsError = "Cifra de la página pública de TikTok. No es video.list y no se liquida sola.";
+          warnings.push("Se guardó una cifra pública sin verificar. No entra al libro hasta que un administrador la justifique o conectes TikTok.");
+        } else {
+          statsError = loadIntegrations().tiktok
+            ? "Conecta tu cuenta de TikTok en Perfil para leer view_count con video.list."
+            : "TikTok no entregó reproducciones. oEmbed solo confirma título y autor.";
+          warnings.push("Las reproducciones de TikTok no están verificadas. No se suman como vistas válidas.");
+        }
+        if (!parsed.videoId) warnings.push("No se pudo resolver el ID del video. Se guardó una huella del enlace.");
+      }
     }
 
     if (!title) title = "Clip sin título";
@@ -830,12 +891,12 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
       insert into clips (
         user_id, provider, platform_id, declared_platform, classification, external_id, url,
         title, description, channel_name, published_on, duration_seconds, status, availability,
-        stats_source, stats_verified, public_views, likes, comments, stats_error, stats_updated_at
+        stats_source, stats_verified, public_views, likes, comments, shares, thumbnail_url, stats_error, stats_updated_at
       ) values (
         ${context.userId}, ${parsed.provider}, ${platformId}, ${data.declared}, ${classification},
         ${externalId}, ${parsed.normalized}, ${title}, ${data.description?.trim() ?? ""}, ${channel},
         ${data.publishedOn}, ${duration}, ${status}, ${availability}, ${statsSource}, ${statsVerified},
-        ${publicViews}, ${likes}, ${comments}, ${statsError}, now()
+        ${publicViews}, ${likes}, ${comments}, ${shares}, ${thumbnail}, ${statsError}, now()
       )
       returning id
     `;
@@ -865,14 +926,151 @@ async function resolveFinal(url: string): Promise<string> {
   }
 }
 
-async function oembed(url: string): Promise<{ title?: string; author_name?: string } | null> {
+type TikTokLink = {
+  user_id: string;
+  access_token: string;
+  refresh_token: string | null;
+  expires_at: string | null;
+};
+
+async function freshTikTokToken(sql: Sql, userId: string): Promise<string | null> {
+  const rows = await sql<TikTokLink>`
+    select user_id, access_token, refresh_token,
+           to_char(expires_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as expires_at
+    from tiktok_connections where user_id = ${userId}
+  `;
+  const link = rows[0];
+  if (!link) return null;
+  const expiring = link.expires_at ? new Date(link.expires_at).getTime() < Date.now() + 60_000 : false;
+  if (!expiring) return link.access_token;
+  if (!link.refresh_token) return null;
+  const next = await refreshTikTokToken(link.refresh_token);
+  const expiresAt = new Date(Date.now() + Number(next.expires_in ?? 86400) * 1000).toISOString();
+  await sql`
+    update tiktok_connections
+    set access_token = ${next.access_token},
+        refresh_token = ${next.refresh_token ?? link.refresh_token},
+        expires_at = ${expiresAt}::timestamptz,
+        updated_at = now()
+    where user_id = ${userId}
+  `;
+  return next.access_token;
+}
+
+async function lookupTikTokVideo(sql: Sql, userId: string, videoId: string): Promise<TikTokVideo | null> {
+  if (!loadIntegrations().tiktok || videoId.startsWith("url:")) return null;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return null;
-    return (await response.json()) as { title?: string; author_name?: string };
+    const token = await freshTikTokToken(sql, userId);
+    if (!token) return null;
+    const videos = await tiktokVideoPages(token);
+    return videos.find((video) => video.id === videoId) ?? null;
   } catch {
     return null;
   }
+}
+
+async function applyTikTokOfficial(sql: Sql, clip: Clip, video: TikTokVideo, actorId: string) {
+  const publicViews = Number(video.view_count ?? 0);
+  const spike = clip.publicViews >= 500 && publicViews > clip.publicViews * 8;
+  const dropped = clip.publicViews >= 1000 && publicViews < clip.publicViews * 0.4;
+  let flags = clip.flags.filter((flag) => flag !== "suspicious_spike" && flag !== "views_dropped");
+  if (spike) flags = withFlag(flags, "suspicious_spike");
+  if (dropped) flags = withFlag(flags, "views_dropped");
+  await sql`
+    update clips set
+      public_views = ${publicViews},
+      likes = ${video.like_count ?? null},
+      comments = ${video.comment_count ?? null},
+      shares = ${video.share_count ?? null},
+      duration_seconds = ${video.duration ?? clip.durationSeconds},
+      title = ${video.title || clip.title},
+      thumbnail_url = ${video.cover_image_url ?? clip.thumbnailUrl},
+      availability = 'public',
+      stats_source = 'tiktok_api',
+      stats_verified = true,
+      stats_error = ${spike ? "Salto de reproducciones fuera de lo normal. Las vistas válidas no se movieron." : null},
+      flags = ${JSON.stringify(flags)}::jsonb,
+      stats_updated_at = now(),
+      updated_at = now()
+    where id = ${clip.id}
+  `;
+  const canAccrue =
+    !clip.viewsLocked &&
+    !spike &&
+    !dropped &&
+    (clip.status === "approved" || clip.status === "settled") &&
+    publicViews > clip.billedViews;
+  if (canAccrue) {
+    await accrue(sql, {
+      clipId: clip.id,
+      newValid: publicViews,
+      actorId,
+      kind: "accrual",
+      note: "Sincronización TikTok video.list. Solo se liquidó el aumento.",
+      source: "tiktok_api",
+      lock: false,
+      status: null,
+    });
+  } else {
+    await writeHistory(sql, clip.id, "tiktok_api", spike ? "Salto sospechoso" : "Observación", actorId);
+  }
+  if (spike) {
+    await notifyAdmins(sql, "fraud", "Reproducciones sospechosas", `${clip.title} multiplicó sus vistas en TikTok.`, "/admin/clips");
+  }
+  return canAccrue ? "Estadísticas de TikTok verificadas y diferencia liquidada." : "Estadísticas de TikTok actualizadas.";
+}
+
+export async function syncUserTikTok(sql: Sql, userId: string, actorId: string): Promise<{ synced: number; errors: string[] }> {
+  if (!loadIntegrations().tiktok) {
+    return { synced: 0, errors: ["TikTok no tiene client key y secret. No se inventaron vistas."] };
+  }
+  let token: string | null;
+  try {
+    token = await freshTikTokToken(sql, userId);
+  } catch (error) {
+    return { synced: 0, errors: [error instanceof Error ? error.message : "No se pudo refrescar TikTok."] };
+  }
+  if (!token) return { synced: 0, errors: ["Esa cuenta no autorizó TikTok."] };
+  let videos: TikTokVideo[];
+  try {
+    videos = await tiktokVideoPages(token);
+  } catch (error) {
+    return { synced: 0, errors: [error instanceof Error ? error.message : "video.list falló."] };
+  }
+  const rows = await sql.query<ClipRow>(
+    `select ${CLIP_FIELDS} ${CLIP_FROM} where c.user_id = $1 and c.provider = 'tiktok' and c.availability <> 'deleted'`,
+    [userId],
+  );
+  let synced = 0;
+  const errors: string[] = [];
+  for (const clip of rows.map(mapClip)) {
+    const video = videos.find((item) => item.id === clip.externalId);
+    if (!video) continue;
+    const message = await applyTikTokOfficial(sql, clip, video, actorId);
+    if (message.includes("Salto") || clip.flags.includes("suspicious_spike")) errors.push(`${clip.title}: ${message}`);
+    synced += 1;
+  }
+  return { synced, errors };
+}
+
+function requestOrigin(): string {
+  const configured = process.env.TIKTOK_REDIRECT_URI?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      /* the explicit URI is still used below */
+    }
+  }
+  const request = getRequest();
+  const host = request?.headers.get("x-forwarded-host") ?? request?.headers.get("host");
+  const proto = request?.headers.get("x-forwarded-proto") ?? (host?.includes("localhost") ? "http" : "https");
+  if (host) return `${proto}://${host}`;
+  return "http://127.0.0.1:8080";
+}
+
+export function tiktokRedirectUri(): string {
+  return process.env.TIKTOK_REDIRECT_URI?.trim() || `${requestOrigin()}/api/tiktok/callback`;
 }
 
 export const getMyClips = async ({ context }: { context: { userId: string } }) => {
@@ -1236,12 +1434,18 @@ export const listClippers = async ({ context }: { context: { userId: string } })
       views: number;
       posts: number;
       earned: string;
+      month_posts: number;
+      month_views: number;
+      last_at: string | null;
     }>`
       select p.user_id, p.display_name, u.email, p.avatar_url, p.status, p.phone,
              to_char(p.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as created_at,
              coalesce((select sum(valid_views) from clips c where c.user_id = p.user_id and c.status in ('approved','settled')), 0)::int as views,
              (select count(*)::int from clips c where c.user_id = p.user_id) as posts,
-             coalesce((select sum(amount) from earnings e where e.user_id = p.user_id), 0)::text as earned
+             coalesce((select sum(amount) from earnings e where e.user_id = p.user_id), 0)::text as earned,
+             (select count(*)::int from clips c where c.user_id = p.user_id and c.created_at >= date_trunc('month', now())) as month_posts,
+             coalesce((select sum(valid_views) from clips c where c.user_id = p.user_id and c.status in ('approved','settled') and c.updated_at >= date_trunc('month', now())), 0)::int as month_views,
+             (select to_char(max(c.updated_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from clips c where c.user_id = p.user_id) as last_at
       from profiles p
       join "user" u on u.id = p.user_id
       where p.role = 'clipper'
@@ -1439,11 +1643,18 @@ export const syncClip = async ({ context, data }: { context: { userId: string };
     const clip = await loadClip(sql, data.clipId);
     if (!clip) throw new Error("Publicación no encontrada.");
     if (profile.role !== "admin" && clip.userId !== profile.userId) throw new Error("No tienes acceso.");
-    if (clip.provider !== "youtube") {
-      return {
-        ok: false,
-        message: "TikTok no tiene una fuente oficial de vistas conectada. El enlace sigue guardado, pero las reproducciones no se marcan como verificadas.",
-      };
+    if (clip.provider === "tiktok") {
+      const video = await lookupTikTokVideo(sql, clip.userId, clip.externalId);
+      if (!video) {
+        return {
+          ok: false,
+          message: loadIntegrations().tiktok
+            ? "TikTok no devolvió ese video. La cuenta dueña debe autorizar video.list y el clip tiene que ser de esa cuenta."
+            : "Faltan TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. No se marcaron vistas como verificadas.",
+        };
+      }
+      const message = await applyTikTokOfficial(sql, clip, video, profile.userId);
+      return { ok: true, message, synced: 1 };
     }
     const result = await syncRows(sql, [clip], profile.userId);
     return { ok: result.errors.length === 0, message: result.errors[0] ?? "Sincronización hecha.", synced: result.synced };
@@ -1650,14 +1861,15 @@ export const getSettings = async ({ context }: { context: { userId: string } }) 
     const integrations = await sql<{ id: string; label: string; status_note: string | null }>`
       select id, label, status_note from api_integrations order by id
     `;
+    const integrationsEnv = loadIntegrations();
     return {
       settings: settings[0],
       rates,
       integrations,
       env: {
-        youtube: Boolean(process.env.YOUTUBE_API_KEY),
-        tiktok: Boolean(process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET),
-        cron: Boolean(process.env.CRON_SECRET),
+        youtube: integrationsEnv.youtube,
+        tiktok: integrationsEnv.tiktok,
+        cron: Boolean(process.env.CRON_SECRET?.trim()),
         database: dbSource === "neon" ? "Neon Postgres" : "Postgres de vista previa",
       },
     };
@@ -1819,3 +2031,144 @@ export const getReports = async ({ context, data }: { context: { userId: string 
     }
     throw new Error("Reporte no disponible.");
   };
+
+export const probeYoutube = async ({ context }: { context: { userId: string } }) => {
+  const sql = await getSql();
+  await requireAdmin(sql, context.userId);
+  const state = loadIntegrations().youtube;
+  if (state !== "ready") {
+    return {
+      ok: false as const,
+      message:
+        state === "placeholder"
+          ? "La clave guardada es un marcador, no una API key de Google. No se llamó a videos.list."
+          : "No hay YOUTUBE_API_KEY en el servidor.",
+    };
+  }
+  const result = await youtubeList(sql, ["jNQXAC9IVRw"]);
+  if ("error" in result) return { ok: false as const, message: result.error };
+  const item = result.items[0];
+  if (!item) return { ok: false as const, message: "Google respondió sin el video de prueba." };
+  const views = Number(item.statistics?.viewCount ?? 0).toLocaleString("es-DO");
+  return {
+    ok: true as const,
+    message: `YouTube respondió. «${item.snippet?.title ?? "video de prueba"}» tiene ${views} vistas públicas.`,
+  };
+};
+
+export const startTikTokConnect = async ({ context }: { context: { userId: string } }) => {
+  const sql = await getSql();
+  const profile = await requireProfile(sql, context.userId);
+  if (!loadIntegrations().tiktok) {
+    throw new Error("Define TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET en el servidor antes de conectar cuentas.");
+  }
+  const redirectUri = tiktokRedirectUri();
+  const auth = await buildTikTokAuth({ redirectUri });
+  await sql`delete from oauth_states where user_id = ${profile.userId} and provider = 'tiktok'`;
+  await sql`
+    insert into oauth_states (state, user_id, provider, code_verifier, expires_at)
+    values (${auth.state}, ${profile.userId}, 'tiktok', ${auth.verifier}, now() + interval '15 minutes')
+  `;
+  return { url: auth.url };
+};
+
+export const getTikTokStatus = async ({ context }: { context: { userId: string } }) => {
+  const sql = await getSql();
+  await requireProfile(sql, context.userId);
+  const rows = await sql<{ display_name: string | null }>`
+    select display_name from tiktok_connections where user_id = ${context.userId}
+  `;
+  return {
+    appReady: loadIntegrations().tiktok,
+    connected: Boolean(rows[0]),
+    name: rows[0]?.display_name ?? null,
+  };
+};
+
+export const disconnectTikTok = async ({ context }: { context: { userId: string } }) => {
+  const sql = await getSql();
+  await requireProfile(sql, context.userId);
+  await sql`delete from tiktok_connections where user_id = ${context.userId}`;
+  await audit(sql, context.userId, "tiktok.disconnect", "tiktok_connection", context.userId, {});
+  return { ok: true };
+};
+
+export const syncMyTikTok = async ({ context }: { context: { userId: string } }) => {
+  const sql = await getSql();
+  const profile = await requireProfile(sql, context.userId);
+  return syncUserTikTok(sql, profile.userId, profile.userId);
+};
+
+export const syncTiktokBatch = async ({ context }: { context: { userId: string } }) => {
+  const sql = await getSql();
+  const admin = await requireAdmin(sql, context.userId);
+  const links = await sql<{ user_id: string }>`select user_id from tiktok_connections`;
+  let synced = 0;
+  const errors: string[] = [];
+  if (!loadIntegrations().tiktok) {
+    return { synced: 0, errors: ["Sin TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. No se inventaron vistas."] };
+  }
+  for (const link of links) {
+    const result = await syncUserTikTok(sql, link.user_id, admin.userId);
+    synced += result.synced;
+    errors.push(...result.errors);
+  }
+  if (links.length === 0) errors.push("Ningún clipper autorizó TikTok todavía.");
+  await audit(sql, admin.userId, "tiktok.sync", "integration", "tiktok", { synced, errors });
+  return { synced, errors };
+};
+
+export async function finishTikTokOAuth(input: {
+  userId: string | null;
+  code: string | null;
+  state: string | null;
+  error: string | null;
+}): Promise<string> {
+  const fail = (message: string) => `/clipper/profile?tiktok=error&msg=${encodeURIComponent(message.slice(0, 180))}`;
+  if (input.error) return fail(input.error);
+  if (!input.userId) return fail("Inicia sesión antes de conectar TikTok.");
+  if (!input.code || !input.state) return fail("TikTok no devolvió el código de autorización.");
+  const sql = await getSql();
+  const rows = await sql<{ user_id: string; code_verifier: string }>`
+    delete from oauth_states
+    where state = ${input.state} and provider = 'tiktok' and expires_at > now()
+    returning user_id, code_verifier
+  `;
+  const row = rows[0];
+  if (!row || row.user_id !== input.userId) return fail("La autorización venció o no coincide con tu sesión.");
+  try {
+    const token = await exchangeTikTokCode({
+      code: input.code,
+      verifier: row.code_verifier,
+      redirectUri: tiktokRedirectUri(),
+    });
+    const who = await tiktokProfile(token.access_token);
+    const expiresAt = new Date(Date.now() + Number(token.expires_in ?? 86400) * 1000).toISOString();
+    await sql`
+      insert into tiktok_connections (
+        user_id, open_id, display_name, access_token, refresh_token, expires_at, scope
+      ) values (
+        ${input.userId},
+        ${token.open_id ?? who.open_id ?? null},
+        ${who.display_name ?? null},
+        ${token.access_token},
+        ${token.refresh_token ?? null},
+        ${expiresAt}::timestamptz,
+        ${token.scope ?? "user.info.basic,video.list"}
+      )
+      on conflict (user_id) do update set
+        open_id = excluded.open_id,
+        display_name = excluded.display_name,
+        access_token = excluded.access_token,
+        refresh_token = excluded.refresh_token,
+        expires_at = excluded.expires_at,
+        scope = excluded.scope,
+        updated_at = now()
+    `;
+    await syncUserTikTok(sql, input.userId, input.userId);
+    return "/clipper/profile?tiktok=ok";
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "No se pudo guardar la conexión de TikTok.");
+  }
+}
+

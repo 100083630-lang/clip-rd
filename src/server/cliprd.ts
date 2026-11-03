@@ -446,3 +446,45 @@ export const getReports = createServerFn({ method: "GET" })
     const { getReports: run } = await import("./domain.server");
     return run(...args);
   });
+
+export const probeYoutube = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async (...args: Parameters<ServerDomain["probeYoutube"]>) => {
+    const { probeYoutube: run } = await import("./domain.server");
+    return run(...args);
+  });
+
+export const startTikTokConnect = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async (...args: Parameters<ServerDomain["startTikTokConnect"]>) => {
+    const { startTikTokConnect: run } = await import("./domain.server");
+    return run(...args);
+  });
+
+export const getTikTokStatus = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async (...args: Parameters<ServerDomain["getTikTokStatus"]>) => {
+    const { getTikTokStatus: run } = await import("./domain.server");
+    return run(...args);
+  });
+
+export const disconnectTikTok = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async (...args: Parameters<ServerDomain["disconnectTikTok"]>) => {
+    const { disconnectTikTok: run } = await import("./domain.server");
+    return run(...args);
+  });
+
+export const syncMyTikTok = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async (...args: Parameters<ServerDomain["syncMyTikTok"]>) => {
+    const { syncMyTikTok: run } = await import("./domain.server");
+    return run(...args);
+  });
+
+export const syncTiktokBatch = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async (...args: Parameters<ServerDomain["syncTiktokBatch"]>) => {
+    const { syncTiktokBatch: run } = await import("./domain.server");
+    return run(...args);
+  });

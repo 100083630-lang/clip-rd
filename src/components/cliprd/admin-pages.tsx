@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { formatUsd, formatViews, formatWhen } from "@/lib/cliprd/format";
+import { formatUsd, formatViews, formatWhen, formatAgo } from "@/lib/cliprd/format";
 import { PLATFORM_LABEL, ACCOUNT_STATUS } from "@/lib/cliprd/labels";
 import { WORKED_EXAMPLE, earningAmount, sumAmounts } from "@/lib/cliprd/money";
 import type { Profile, ReportTable } from "@/lib/cliprd/types";
@@ -19,17 +19,20 @@ import {
   listClips,
   listInvites,
   listPayouts,
+  probeYoutube,
   recordPayment,
   reviewClip,
   setPrize,
   setRate,
   syncClip,
+  syncTiktokBatch,
   syncYoutubeBatch,
   updateClipper,
   updateSettings,
 } from "@/server/cliprd";
 import { PerformanceChart, PlatformChart } from "./charts";
 import { PageTitle, PayBadge, Shell, Stat, StatusBadge, downloadText, platformName, toCsv, toExcel, useRefresh } from "./chrome";
+import { ClipGallery, ClipPoster } from "./media";
 
 function fail(error: unknown) {
   toast.error(error instanceof Error ? error.message : "No se pudo completar");
@@ -43,6 +46,10 @@ export function AdminHome({ profile }: { profile: Profile }) {
   const data = useQuery({
     queryKey: ["admin-home", platform, from, to],
     queryFn: () => getAdminDashboard({ data: { platform: platform as "all", from, to } }),
+  });
+  const recent = useQuery({
+    queryKey: ["admin-clips", "", "", "home"],
+    queryFn: () => listClips({ data: { status: "", platform: "", q: "", offset: 0 } }),
   });
   const cards = data.data?.cards;
   const series = chart === "daily" ? data.data?.daily : chart === "weekly" ? data.data?.weekly : data.data?.monthly;
@@ -103,6 +110,10 @@ export function AdminHome({ profile }: { profile: Profile }) {
           ))}
         </div>
       </section>
+      <section className="mt-6">
+        <h2 className="mb-3 text-xl">Clips recientes</h2>
+        <ClipGallery clips={(recent.data ?? []).slice(0, 6)} />
+      </section>
     </Shell>
   );
 }
@@ -114,6 +125,11 @@ export function ClippersPage({ profile }: { profile: Profile }) {
   const [bonusFor, setBonusFor] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [q, setQ] = useState("");
+  const visible = (rows.data ?? []).filter((clipper) => {
+    const haystack = `${clipper.display_name} ${clipper.email ?? ""}`.toLowerCase();
+    return haystack.includes(q.trim().toLowerCase());
+  });
   return (
     <Shell profile={profile}>
       <PageTitle kicker="EQUIPO" title="Clippers" text="La primera cuenta es el administrador. Las demás entran pendientes, salvo que usen una invitación." />
@@ -136,15 +152,23 @@ export function ClippersPage({ profile }: { profile: Profile }) {
           <p key={invite.code}>{invite.code} · vence {formatWhen(invite.expires_at)} · {invite.used_by ? "usada" : "libre"}</p>
         ))}
       </div>
-      <div className="space-y-3">
-        {(rows.data ?? []).map((clipper) => (
-          <article key={clipper.user_id} className="card p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg">{clipper.display_name}</h2>
-                <p className="text-xs text-muted">{clipper.email} · {clipper.status} · {formatViews(Number(clipper.views))} vistas · {formatUsd(clipper.earned)}</p>
+      <input className="input mb-4 max-w-sm" placeholder="Buscar clipper" value={q} onChange={(event) => setQ(event.target.value)} />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {visible.map((clipper) => (
+          <article key={clipper.user_id} className={`card p-4 ${clipper.status === "active" ? "glow-active" : ""}`}>
+            <div className="flex items-start gap-3">
+              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-surface-2 text-lg font-bold text-neon">
+                {clipper.avatar_url ? <img alt="" src={clipper.avatar_url} className="size-12 rounded-full object-cover" /> : clipper.display_name.slice(0, 1)}
+              </span>
+              <div className="min-w-0">
+                <h2 className="truncate text-lg">{clipper.display_name}</h2>
+                <p className="truncate text-xs text-muted">{clipper.email}</p>
+                <p className="mt-1 text-xs font-semibold text-neon">{ACCOUNT_STATUS[clipper.status as keyof typeof ACCOUNT_STATUS] ?? clipper.status}</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+            </div>
+            <p className="mt-3 text-sm text-muted">Este mes: {clipper.month_posts} clips · {formatViews(Number(clipper.month_views))} vistas válidas</p>
+            <p className="text-xs text-muted">Último {formatAgo(clipper.last_at)} · total {formatUsd(clipper.earned)}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
                 <select
                   className="select max-w-44"
                   value={clipper.status}
@@ -169,7 +193,6 @@ export function ClippersPage({ profile }: { profile: Profile }) {
                   Eliminar
                 </button>
               </div>
-            </div>
             {bonusFor === clipper.user_id ? (
               <form
                 className="mt-3 grid gap-2 md:grid-cols-[8rem_1fr_auto]"
@@ -220,13 +243,19 @@ export function ClipsAdminPage({ profile }: { profile: Profile }) {
           <option value="youtube_shorts">Shorts</option>
           <option value="youtube_video">Videos</option>
         </select>
-        <button type="button" className="btn btn-ghost" onClick={() => void syncYoutubeBatch().then((result) => toast.message(`Sincronizados ${result.synced}. ${result.errors.join(" ")}`)).catch(fail)}>
+        <button type="button" className="btn btn-ghost" onClick={() => void syncYoutubeBatch().then((result) => toast.message(`YouTube: ${result.synced}. ${result.errors.join(" ")}`)).catch(fail)}>
           Sincronizar YouTube
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={() => void syncTiktokBatch().then((result) => toast.message(`TikTok: ${result.synced}. ${result.errors.join(" ")}`)).catch(fail)}>
+          Sincronizar TikTok
         </button>
       </div>
       <div className="space-y-3">
         {(clips.data ?? []).map((clip) => (
-          <ClipReview key={clip.id} clipId={clip.id} title={clip.title} owner={clip.ownerName} status={clip.status} platform={clip.platformId} classification={clip.classification} provider={clip.provider} publicViews={clip.publicViews} validViews={clip.validViews} verified={clip.statsVerified} source={clip.statsSource} error={clip.statsError} onDone={refresh} />
+          <article key={clip.id} className="card overflow-hidden">
+            <ClipPoster clip={clip} />
+            <ClipReview clipId={clip.id} title={clip.title} owner={clip.ownerName} status={clip.status} platform={clip.platformId} classification={clip.classification} provider={clip.provider} publicViews={clip.publicViews} validViews={clip.validViews} verified={clip.statsVerified} source={clip.statsSource} error={clip.statsError} onDone={refresh} />
+          </article>
         ))}
       </div>
     </Shell>
@@ -264,7 +293,7 @@ function ClipReview(props: {
       .catch(fail);
   };
   return (
-    <article className="card p-4">
+    <div className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-lg">{props.title}</h2>
@@ -291,7 +320,9 @@ function ClipReview(props: {
             <button type="button" className="btn btn-ghost" onClick={() => void classifyClip({ data: { clipId: props.clipId, platformId: "youtube_video" } }).then(() => props.onDone()).catch(fail)}>Es video</button>
             <button type="button" className="btn btn-ghost" onClick={() => void syncClip({ data: { clipId: props.clipId } }).then((result) => toast.message(result.message)).catch(fail)}>Sincronizar</button>
           </>
-        ) : null}
+        ) : (
+          <button type="button" className="btn btn-ghost" onClick={() => void syncClip({ data: { clipId: props.clipId } }).then((result) => toast.message(result.message)).catch(fail)}>Sincronizar TikTok</button>
+        )}
         <button
           type="button"
           className="btn btn-ghost"
@@ -304,7 +335,7 @@ function ClipReview(props: {
           Ajustar vistas
         </button>
       </div>
-    </article>
+    </div>
   );
 }
 
@@ -551,14 +582,32 @@ export function SettingsPage({ profile }: { profile: Profile }) {
         <button className="btn btn-primary" type="submit">Guardar</button>
       </form>
       <section className="mt-6 grid gap-3 md:grid-cols-3">
-        <article className="card p-4"><h2 className="text-lg">YouTube</h2><p className="mt-2 text-sm text-muted">{env?.youtube ? "YOUTUBE_API_KEY presente. videos.list está listo." : "Falta YOUTUBE_API_KEY. No se simulan vistas."}</p><p className="mt-2 text-xs text-muted">Cuota usada hoy: {settings?.youtube_quota_day === new Date().toISOString().slice(0, 10) ? settings?.youtube_quota_used : 0}</p></article>
-        <article className="card p-4"><h2 className="text-lg">TikTok</h2><p className="mt-2 text-sm text-muted">{env?.tiktok ? "Hay claves de app. Aun así cada cuenta debe autorizar OAuth para ver reproducciones oficiales." : "Sin TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. Solo se valida el enlace y, si responde, el oEmbed público."}</p></article>
+        <article className="card p-4">
+          <h2 className="text-lg">YouTube</h2>
+          <p className="mt-2 text-sm text-muted">
+            {env?.youtube === "ready"
+              ? "YOUTUBE_API_KEY real. videos.list está listo."
+              : env?.youtube === "placeholder"
+                ? "Hay un marcador, no una clave de Google. No se simulan vistas ni se llama a la API."
+                : "Falta YOUTUBE_API_KEY. No se simulan vistas."}
+          </p>
+          <p className="mt-2 text-xs text-muted">Cuota usada hoy: {settings?.youtube_quota_day === new Date().toISOString().slice(0, 10) ? settings?.youtube_quota_used : 0}</p>
+          <button type="button" className="btn btn-ghost mt-3" onClick={() => void probeYoutube().then((result) => toast.message(result.message)).catch(fail)}>Probar YouTube</button>
+        </article>
+        <article className="card p-4">
+          <h2 className="text-lg">TikTok</h2>
+          <p className="mt-2 text-sm text-muted">
+            {env?.tiktok
+              ? "Hay claves de app. Cada clipper autoriza video.list desde su perfil. Sin esa autorización no hay vistas oficiales."
+              : "Sin TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. Solo se valida el enlace y, si responde, el oEmbed público. Una cifra leída de la página no se liquida sola."}
+          </p>
+        </article>
         <article className="card p-4"><h2 className="text-lg">Base y cron</h2><p className="mt-2 text-sm text-muted">{env?.database}. Cron: {env?.cron ? "CRON_SECRET presente" : "sin CRON_SECRET, POST /api/cron/sync responde 503"}.</p></article>
       </section>
       <section className="mt-6 space-y-3 text-sm text-muted">
         <h2 className="text-xl text-fg">Cómo configurar las APIs</h2>
-        <p>YouTube: crea un proyecto en Google Cloud, activa YouTube Data API v3 y genera una API key. En el despliegue define YOUTUBE_API_KEY. Cada videos.list cuesta 1 unidad. CLIPRD se detiene cerca de 9,500 unidades diarias.</p>
-        <p>TikTok: la API oficial exige una app aprobada y el permiso de cada cuenta. Define TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. Hasta que exista el token de cada clipper, CLIPRD no presenta vistas de TikTok como verificadas.</p>
+        <p>YouTube: crea un proyecto en Google Cloud, activa YouTube Data API v3 y genera una API key. Sustituye el marcador por esa clave en el servidor (YOUTUBE_API_KEY) y pulsa Probar YouTube. Cada videos.list cuesta 1 unidad. CLIPRD se detiene cerca de 9,500 unidades diarias.</p>
+        <p>TikTok: crea una app en developers.tiktok.com con Login Kit y el permiso video.list. Define TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET y, si el dominio público es fijo, TIKTOK_REDIRECT_URI apuntando a /api/tiktok/callback. Cada clipper conecta su cuenta. Hasta entonces las cifras de la página pública no se pagan.</p>
         <p>Sincronización: un programador puede llamar POST /api/cron/sync con Authorization Bearer y CRON_SECRET. Sin ese secreto el endpoint no corre.</p>
         <p>La moneda operativa es USD. La seguridad de cada fila está en el servidor: un clipper solo recibe sus clips, su cuenta y sus pagos. No hay claves en el navegador.</p>
       </section>

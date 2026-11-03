@@ -18,14 +18,15 @@ No las pongas en el frontend. No hay archivo `.env` en este proyecto: al publica
 | Variable | Uso |
 | --- | --- |
 | `DATABASE_URL` | La inyecta la plataforma al publicar. |
-| `YOUTUBE_API_KEY` | YouTube Data API v3. Método `videos.list` con `snippet`, `contentDetails`, `statistics`, `status`. Sin ella no hay vistas verificadas. |
-| `TIKTOK_CLIENT_KEY` | App de TikTok. No basta para ver reproducciones. |
+| `YOUTUBE_API_KEY` | YouTube Data API v3. Método `videos.list` con `snippet`, `contentDetails`, `statistics`, `status`. El marcador `MI_CLAVE_DE_YOUTUBE` no llama a Google y no inventa vistas. |
+| `TIKTOK_CLIENT_KEY` | App de TikTok. Login Kit + `video.list`. |
 | `TIKTOK_CLIENT_SECRET` | Secreto de esa app. |
+| `TIKTOK_REDIRECT_URI` | Opcional. Si no está, se usa el origen de la petición + `/api/tiktok/callback`. Debe coincidir con el registrado en TikTok. |
 | `CRON_SECRET` | `POST /api/cron/sync` con `Authorization: Bearer <secreto>`. Sin ella el endpoint responde 503. |
 
 YouTube: Google Cloud → activa YouTube Data API v3 → crea una API key. Cada consulta cuesta 1 unidad. CLIPRD se detiene cerca de 9,500 unidades al día.
 
-TikTok: la API oficial exige una app aprobada y OAuth de cada cuenta. Hasta entonces CLIPRD solo valida el enlace y, si responde, el oEmbed público (título y autor). Eso no es una estadística de vistas y no se presenta como verificada.
+TikTok: la API oficial exige una app aprobada y OAuth de cada cuenta (`user.info.basic`, `video.list`). El clipper conecta su cuenta en Perfil. Hasta entonces CLIPRD valida el enlace y, si la página pública lo trae, guarda una cifra observada. Eso no es una estadística verificada y no se liquida sola.
 
 ## Motor
 

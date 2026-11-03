@@ -148,6 +148,16 @@
     background-size: 56px 56px;
     mask-image: linear-gradient(to bottom, black 20%, transparent 78%);
   }
+
+  .poster-frame {
+    aspect-ratio: 16 / 10;
+    background: var(--color-surface-2);
+  }
+
+  .glow-active {
+    border-color: color-mix(in oklab, var(--color-neon) 70%, var(--color-border));
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-neon) 30%, transparent);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,19 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { formatUsd, formatViews, formatWhen, maskAccount } from "@/lib/cliprd/format";
 import { platformName, PageTitle, PayBadge, Shell, Stat, StatusBadge, useRefresh } from "./chrome";
 import { PerformanceChart } from "./charts";
+import { ClipGallery, ClipPoster } from "./media";
 import type { Profile } from "@/lib/cliprd/types";
 import {
   getClipDetail,
   getClipperDashboard,
   getMyClips,
   getMyPayments,
+  getTikTokStatus,
   registerClip,
   requestPayout,
   savePayoutAccount,
+  startTikTokConnect,
+  disconnectTikTok,
+  syncMyTikTok,
   updateMyProfile,
 } from "@/server/cliprd";
 
@@ -23,6 +28,7 @@ function fail(error: unknown) {
 
 export function ClipperHome({ profile }: { profile: Profile }) {
   const data = useQuery({ queryKey: ["clipper-home"], queryFn: () => getClipperDashboard() });
+  const clips = useQuery({ queryKey: ["my-clips"], queryFn: () => getMyClips() });
   const dash = data.data;
   return (
     <Shell profile={profile}>
@@ -52,6 +58,10 @@ export function ClipperHome({ profile }: { profile: Profile }) {
       <section className="card mt-6 p-4">
         <h2 className="mb-2 text-xl">Rendimiento</h2>
         <PerformanceChart data={dash?.series ?? []} mode="money" />
+      </section>
+      <section className="mt-6">
+        <h2 className="mb-3 text-xl">Clips recientes</h2>
+        <ClipGallery clips={(clips.data ?? []).slice(0, 6)} />
       </section>
     </Shell>
   );
@@ -116,23 +126,26 @@ export function MyClipsPage({ profile }: { profile: Profile }) {
       <div className="space-y-3">
         {(clips.data ?? []).length === 0 ? <p className="text-sm text-muted">Todavía no registras clips.</p> : null}
         {(clips.data ?? []).map((clip) => (
-          <article key={clip.id} className="card p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg">{clip.title}</h2>
-                <p className="text-xs text-muted">{platformName(clip.platformId)} · {clip.publishedOn ?? "sin fecha"}</p>
+          <article key={clip.id} className="card overflow-hidden">
+            <ClipPoster clip={clip} />
+            <div className="p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg">{clip.title}</h2>
+                  <p className="text-xs text-muted">{platformName(clip.platformId)} · {clip.publishedOn ?? "sin fecha"}</p>
+                </div>
+                <StatusBadge value={clip.status} />
               </div>
-              <StatusBadge value={clip.status} />
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                <p><span className="block text-muted">Públicas</span><span className="stat-value">{formatViews(clip.publicViews)}</span></p>
+                <p><span className="block text-muted">Válidas</span><span className="stat-value">{formatViews(clip.validViews)}</span></p>
+                <p><span className="block text-muted">Ganancia</span><span className="stat-value">{formatUsd(clip.earning)}</span></p>
+                <p><span className="block text-muted">Fuente</span>{sourceLabel(clip.statsSource, clip.statsVerified)}</p>
+              </div>
+              {clip.statsError ? <p className="mt-2 text-xs text-warn">{clip.statsError}</p> : null}
+              <button type="button" className="btn btn-ghost mt-3" onClick={() => setOpen(open === clip.id ? null : clip.id)}>Estadísticas</button>
+              {open === clip.id ? <ClipFacts id={clip.id} /> : null}
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-              <p><span className="block text-muted">Públicas</span><span className="stat-value">{formatViews(clip.publicViews)}</span></p>
-              <p><span className="block text-muted">Válidas</span><span className="stat-value">{formatViews(clip.validViews)}</span></p>
-              <p><span className="block text-muted">Ganancia</span><span className="stat-value">{formatUsd(clip.earning)}</span></p>
-              <p><span className="block text-muted">Fuente</span>{sourceLabel(clip.statsSource, clip.statsVerified)}</p>
-            </div>
-            {clip.statsError ? <p className="mt-2 text-xs text-warn">{clip.statsError}</p> : null}
-            <button type="button" className="btn btn-ghost mt-3" onClick={() => setOpen(open === clip.id ? null : clip.id)}>Estadísticas</button>
-            {open === clip.id ? <ClipFacts id={clip.id} /> : null}
           </article>
         ))}
       </div>
@@ -144,7 +157,7 @@ function sourceLabel(source: string, verified: boolean) {
   if (source === "youtube_api" && verified) return "YouTube Data API";
   if (source === "admin_adjustment") return "Ajuste manual";
   if (source === "oembed") return "Metadato, sin vistas";
-  if (source === "tiktok_api") return "TikTok API";
+  if (source === "tiktok_api") return "TikTok video.list";
   return "Sin verificar";
 }
 
@@ -278,6 +291,13 @@ export function ProfilePage({ profile }: { profile: Profile }) {
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl ?? "");
+  const tiktok = useQuery({ queryKey: ["tiktok-status"], queryFn: () => getTikTokStatus() });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get("tiktok");
+    if (flag === "ok") toast.success("TikTok conectado. Las vistas oficiales salen de video.list.");
+    if (flag === "error") toast.error(params.get("msg") || "No se pudo conectar TikTok.");
+  }, []);
   return (
     <Shell profile={profile}>
       <PageTitle kicker="FICHA" title="Perfil" />
@@ -299,6 +319,56 @@ export function ProfilePage({ profile }: { profile: Profile }) {
         <p className="text-xs text-muted">Correo de acceso: {profile.email}</p>
         <button className="btn btn-primary" type="submit">Guardar</button>
       </form>
+      <section className="card mt-4 max-w-xl space-y-3 p-5">
+        <h2 className="text-xl">TikTok</h2>
+        <p className="text-sm text-muted">
+          {tiktok.data?.connected
+            ? `Cuenta autorizada${tiktok.data.name ? `: ${tiktok.data.name}` : ""}. video.list lee tus reproducciones. No se inventan.`
+            : tiktok.data?.appReady
+              ? "La app está lista. Autoriza tu cuenta para verificar vistas. Sin eso, una cifra pública no se paga."
+              : "La agencia todavía no cargó TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. Puedes registrar enlaces, pero las vistas no quedan verificadas."}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!tiktok.data?.appReady}
+            onClick={() => {
+              void startTikTokConnect()
+                .then((result) => {
+                  window.location.href = result.url;
+                })
+                .catch(fail);
+            }}
+          >
+            {tiktok.data?.connected ? "Reconectar" : "Conectar TikTok"}
+          </button>
+          {tiktok.data?.connected ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                void syncMyTikTok()
+                  .then((result) => toast.message(`Actualizados ${result.synced}. ${result.errors.join(" ")}`))
+                  .catch(fail);
+              }}
+            >
+              Actualizar vistas
+            </button>
+          ) : null}
+          {tiktok.data?.connected ? (
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => {
+                void disconnectTikTok().then(() => refresh()).catch(fail);
+              }}
+            >
+              Desconectar
+            </button>
+          ) : null}
+        </div>
+      </section>
     </Shell>
   );
 }

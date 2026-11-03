@@ -133,7 +133,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-BN5L7P_r.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-B-wgQrmL.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -155,143 +155,167 @@ async function getStartManifest(matchedRoutes) {
 var manifest = {
 	"05196ed710aa5b00fb842eb105907d38e4fe0f6fa39b0e6e2066a3efb05ddc33": {
 		functionName: "adjustViews_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"2a0c0bf3bd86f17c7eefc3ab15678df8930b8ae3adca4109938958c01227d1f0": {
 		functionName: "decidePayout_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"362ac5f46d95d4d2180f47eab68b03c09af590336d9ebc6b981ed8b80c7f219f": {
 		functionName: "syncClip_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
+	},
+	"3ef950774bfb48256bb06bc1aee7bccb48b425d68b3d5cd7b6fb8106016806cd": {
+		functionName: "syncMyTikTok_createServerFn_handler",
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
+	},
+	"4286acfded2352b515ac3c59679b8c2f977ce4cca9635fd6888d3ae26a98f8a3": {
+		functionName: "startTikTokConnect_createServerFn_handler",
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"4417d052bc28253f64b43602892996b2f78a4c6864a88a95bf0c789fdae782b3": {
 		functionName: "reviewClip_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"4692ff98dcbdb6a1104110f91210f5fe768b8dcf40b2acbd7cc04fd1a38431c7": {
 		functionName: "getPublicHome_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"4af3fc81b7e29381707cf686c05ccd52fc9349725f61f8f9f3ee1a9c6fcf5f48": {
 		functionName: "savePayoutAccount_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"4edf0eb6b1ac3e7294a02427b167f6c55105700e3d18c50497c5aff7215872ec": {
 		functionName: "recordPayment_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"517bc1fdf4f26ad613168926172c9261540eec6fc3ad240a946050d71bf11e3a": {
 		functionName: "syncYoutubeBatch_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"51c019af42f4fa127aa3927e4399fd97dcadb0dd9667e72a78bd2292d51bf97b": {
 		functionName: "setRate_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"57043fdee9ea270b6740deba2f99549b202f7f2f948ec8e5e3cf044336bb2ea7": {
 		functionName: "getNotifications_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"5d41a8cd9c633906f9db98ad2745632803cefecfc4bf57384291bf72dddef2a0": {
 		functionName: "listAudit_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
+	},
+	"6a802f03f0cb4f1d4057836b99509b5125a600445ee0179ca6591eb1f0628311": {
+		functionName: "syncTiktokBatch_createServerFn_handler",
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"6eb12855e9db1a48e1be288c7c491685c194cd6254f06b2da7eb3c6130c3199a": {
 		functionName: "getMyPayments_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"747dac6efb87dc5938fcd7a88fb19ccb3f848b926fb127a9e7219fa328e1cd5a": {
 		functionName: "markNotificationsRead_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"74b2f1a5a7340893ac511ce7e423bba3f0f671077e6f3b9a20aaa4455e311ba5": {
 		functionName: "getReports_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"762558934beddec4fdd5d9ad2fdbeb8c2913ec8ec27a3c4b82c4e460eab5acf3": {
 		functionName: "updateClipper_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
+	},
+	"7b4ba66ec7e899106013149eec43bcf766e92ef285b373be24f8e898e00dc594": {
+		functionName: "disconnectTikTok_createServerFn_handler",
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"898652950c84e78d7a458e9567bfce6c06cd03feb1652400c8913f0fc90d0d65": {
 		functionName: "addBonus_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"90cdbe1dfa0a33ce14b92cb8d91a40ff53c20b22d24e417a6c55d9a44020b300": {
 		functionName: "getMyClips_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
+	},
+	"92939adcb6e54ad679c5d409c3090cf9b924a0adb3e084b326149d05bcd27fc9": {
+		functionName: "probeYoutube_createServerFn_handler",
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"96f53f00d4ab2d6c2f7937e79f84ab3c886b06320d89c061db9c4bfe2fea3658": {
 		functionName: "listInvites_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"a5c4d1bcf3c92699d4a467a9082b3d9bb71ef537d6cbd72ec13d23697f1d711c": {
 		functionName: "getClipDetail_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"a6204f9306a95af6d830fd1a4e786814120112760c9d5992cd2238d52f6736fd": {
 		functionName: "listClippers_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"b547e60ad472fcdaedea7991356d7b1e2a1ceb021ed52a076ac6eeb6621543aa": {
 		functionName: "updateSettings_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"b5939970d5e7a84c65774a2684c66eaba79b21f49a8bfd2a1f0c9dad683ac732": {
 		functionName: "setPrize_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"b5e863344b3760093074d5bf70ced512500c7f2e80f15a3be659e22812d3833f": {
 		functionName: "requestPayout_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"b636af6068e52884ac90f6fa2fd06bc221d313b06df86d66407c744dd6b510cc": {
 		functionName: "registerClip_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"b6fdac589ddc677024c4d29d5ff44b49b0a0ed9186bea95005a7464a4d568305": {
 		functionName: "getClipperDashboard_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"bf368105f3b61eda83f55c43523114b5be827a93e01742b2c83cb849d089a972": {
 		functionName: "createInvite_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"c3b572b2a6ce076f64b845f5053af9ddb7da5e53a866d223796227d899b6ecad": {
 		functionName: "getAdminDashboard_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"caae159146f16a418cb6d58735a070f5bec486d9125acd66cb696ec0628d1555": {
 		functionName: "updateMyProfile_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"d8af449e4e4d76beda7d0e24b792715a3c14ff4d65fda889961d4daf30989a6d": {
 		functionName: "listPayouts_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"e13a2e37d2c99884ead70006305403d2c879deaca1e8ef8a577600757551e4ce": {
 		functionName: "getMyProfile_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"e44af557ebba052bd0f0bbe362b554b48c9eace1e777be65c5ea049e8a34e9d0": {
 		functionName: "getSettings_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"eeb961e7cb119b4c605efcbc305d54e6947260eda8846360b297cec88e0df28f": {
 		functionName: "getRanking_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
+	},
+	"eebe18904e3ac5b413e64f18247fd88f5154708b2f63d877fcf245ab2196721b": {
+		functionName: "getTikTokStatus_createServerFn_handler",
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"f485f47d94a8e5d3aef3b837c0dfefa7ce1f987418195e2be686d3277a8992b6": {
 		functionName: "bootstrapProfile_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"f60b1fdf955cc796187610bf89487e5ea8a93a429f49982ce9a1af1ae493510e": {
 		functionName: "classifyClip_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	},
 	"fd0a880b1f9d8505a42dd1ee874e50767ea043255464d234b62f7cea3754223b": {
 		functionName: "listClips_createServerFn_handler",
-		importer: () => import("./cliprd-DIuiYzxs.mjs")
+		importer: () => import("./cliprd-GoHFaVN2.mjs")
 	}
 };
 async function getServerFnById(id, access) {
@@ -1696,7 +1720,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-CQiOVCKY.mjs").then((n) => n.t),
+		import("./router-DhrFZZWL.mjs").then((n) => n.t),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);

@@ -43,6 +43,7 @@ export type Clip = {
   statsUpdatedAt: string | null;
   statsError: string | null;
   rejectionReason: string | null;
+  thumbnailUrl: string | null;
   earning: string;
   createdAt: string;
 };

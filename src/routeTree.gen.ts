@@ -33,6 +33,7 @@ import { Route as ClipperProfileRouteImport } from './routes/clipper/profile'
 import { Route as ClipperRegisterClipRouteImport } from './routes/clipper/register-clip'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronSyncRouteImport } from './routes/api/cron/sync'
+import { Route as ApiTiktokCallbackRouteImport } from './routes/api/tiktok/callback'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -154,6 +155,11 @@ const ApiCronSyncRoute = ApiCronSyncRouteImport.update({
   path: '/api/cron/sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTiktokCallbackRoute = ApiTiktokCallbackRouteImport.update({
+  id: '/api/tiktok/callback',
+  path: '/api/tiktok/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -180,6 +186,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -205,6 +212,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -232,6 +240,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -260,6 +269,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/api/auth/$'
     | '/api/cron/sync'
+    | '/api/tiktok/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/api/auth/$'
     | '/api/cron/sync'
+    | '/api/tiktok/callback'
   id:
     | '__root__'
     | '/'
@@ -311,6 +322,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/api/auth/$'
     | '/api/cron/sync'
+    | '/api/tiktok/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -325,6 +337,7 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronSyncRoute: typeof ApiCronSyncRoute
+  ApiTiktokCallbackRoute: typeof ApiTiktokCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -497,6 +510,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tiktok/callback': {
+      id: '/api/tiktok/callback'
+      path: '/api/tiktok/callback'
+      fullPath: '/api/tiktok/callback'
+      preLoaderRoute: typeof ApiTiktokCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -555,6 +575,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronSyncRoute: ApiCronSyncRoute,
+  ApiTiktokCallbackRoute: ApiTiktokCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
