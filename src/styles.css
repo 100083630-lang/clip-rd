@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0a0f;
+  --color-surface: #15151d;
+  --color-surface-2: #1c1c27;
+  --color-fg: #ffffff;
+  --color-muted: #9b9bb0;
+  --color-neon: #2eff7d;
+  --color-neon-2: #39ff14;
+  --color-border: #292936;
+  --color-danger: #ff5d73;
+  --color-warn: #f5c16c;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", "Manrope", ui-sans-serif, sans-serif;
+  --radius-lg: 1rem;
+  --radius-md: 0.75rem;
+}
+
+@layer base {
+  html {
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--font-sans);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    text-wrap: pretty;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-neon) 35%, transparent);
+    color: var(--color-fg);
+  }
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    padding: 0.55rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+  }
+
+  .btn:disabled {
+    cursor: wait;
+    opacity: 0.55;
+  }
+
+  .btn-primary {
+    border-color: transparent;
+    background: var(--color-neon);
+    color: var(--color-bg);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-neon-2);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--color-fg);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--color-neon) 45%, var(--color-border));
+    background: var(--color-surface-2);
+  }
+
+  .btn-danger {
+    border-color: color-mix(in oklab, var(--color-danger) 50%, var(--color-border));
+    background: transparent;
+    color: var(--color-danger);
+  }
+
+  .card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: color-mix(in oklab, var(--color-surface) 92%, transparent);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  .input, .select, .textarea {
+    width: 100%;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    color: var(--color-fg);
+    padding: 0.75rem 0.85rem;
+    font: inherit;
+    outline: none;
+  }
+
+  .textarea {
+    min-height: 6.5rem;
+    resize: vertical;
+  }
+
+  .input:focus, .select:focus, .textarea:focus {
+    border-color: var(--color-neon);
+  }
+
+  .stat-value {
+    font-family: var(--font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--color-border) 80%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--color-border) 80%, transparent) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: linear-gradient(to bottom, black 20%, transparent 78%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .card {
+    border-color: #ccc;
+    background: white;
+  }
+}
