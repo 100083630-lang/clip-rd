@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { authClient } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { formatUsd } from "@/lib/cliprd/format";
 import { TERMS_VERSION } from "@/lib/cliprd/labels";
@@ -26,7 +27,7 @@ export function HomePage() {
       <header className="relative mx-auto flex max-w-6xl flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
         <Logo size="sm" />
         <div className="flex gap-2 sm:shrink-0">
-          <Link to="/admin" className="btn btn-primary">Panel de administración</Link>
+          <Link to="/login" className="btn btn-primary">Entrar</Link>
         </div>
       </header>
       <main className="relative mx-auto max-w-6xl px-4 pb-20">
@@ -40,7 +41,8 @@ export function HomePage() {
               {home.data?.slogan ?? "Convierte visualizaciones en dinero."} Una agencia, dos plataformas, un solo libro.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/admin" className="btn btn-primary">Entrar al panel</Link>
+              <Link to="/login" className="btn btn-primary">Entrar</Link>
+          <Link to="/register" className="btn btn-ghost">Crear cuenta</Link>
               <Link to="/politicas" className="btn btn-ghost">Condiciones</Link>
             </div>
           </div>
@@ -113,7 +115,57 @@ export function HomePage() {
 }
 
 export function LoginPage() {
-  return <Navigate to="/admin" />;
+  const navigate = useNavigate();
+  const { user, isPending } = useCurrentUserState();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  if (!isPending && user) return <Navigate to="/dashboard" />;
+  return (
+    <main className="grid min-h-screen place-items-center px-4 py-10">
+      <form
+        className="card w-full max-w-md space-y-4 p-6 md:p-8"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setPending(true);
+          setError("");
+          void authClient.signIn
+            .email({ email, password })
+            .then(async ({ error: signError }) => {
+              if (signError) throw new Error("Correo o contraseña incorrectos.");
+              const profile = await import("@/server/cliprd").then((mod) => mod.getMyProfile());
+              if (!profile) {
+                void navigate({ to: "/register" });
+                return;
+              }
+              void navigate({ to: profile.role === "admin" ? "/admin" : "/clipper/dashboard" });
+            })
+            .catch((reason: unknown) => {
+              setError(reason instanceof Error ? reason.message : "No se pudo entrar.");
+              setPending(false);
+            });
+        }}
+      >
+        <Logo slogan />
+        <h1 className="text-3xl">Entrar</h1>
+        <p className="text-sm text-muted">Usa el correo y la contraseña de tu cuenta CLIPRD.</p>
+        <label className="field">
+          <span className="label">Correo</span>
+          <input className="input" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+        </label>
+        <label className="field">
+          <span className="label">Contraseña</span>
+          <input className="input" type="password" required minLength={8} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        </label>
+        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        <button className="btn btn-primary w-full" disabled={pending || isPending}>{pending ? "Entrando…" : "Entrar"}</button>
+        <p className="text-sm text-muted">
+          ¿No tienes cuenta? <Link to="/register" className="text-neon underline-offset-4 hover:underline">Regístrate</Link>
+        </p>
+      </form>
+    </main>
+  );
 }
 
 export function RegisterPage() {
@@ -124,18 +176,47 @@ export function RegisterPage() {
     enabled: !isPending && Boolean(user),
     queryFn: () => import("@/server/cliprd").then((mod) => mod.getMyProfile()),
   });
-  if (!isPending && user && profile.data) return <Navigate to="/dashboard" />;
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  if (!isPending && user && profile.data) {
+    return <Navigate to={profile.data.role === "admin" ? "/admin" : "/clipper/dashboard"} />;
+  }
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
       <div className="card w-full max-w-md p-6 md:p-8">
         <Logo slogan />
         {isPending || (user && profile.isLoading) ? <p className="mt-8 text-sm text-muted">Cargando…</p> : null}
         {!isPending && !user ? (
-          <div className="mt-8 space-y-4">
-            <h1 className="text-3xl">Solo administración</h1>
-            <p className="text-sm text-muted">Las cuentas públicas y el inicio con Google quedaron fuera. Entra al panel.</p>
-            <Link to="/admin" className="btn btn-primary w-full">Ir al panel</Link>
-          </div>
+          <form
+            className="mt-8 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setPending(true);
+              setError("");
+              void authClient.signUp
+                .email({ email, password, name })
+                .then(({ error: signError }) => {
+                  if (signError) throw new Error(signError.message ?? "No se pudo crear la cuenta.");
+                  void navigate({ to: "/register" });
+                })
+                .catch((reason: unknown) => {
+                  setError(reason instanceof Error ? reason.message : "No se pudo crear la cuenta.");
+                  setPending(false);
+                });
+            }}
+          >
+            <h1 className="text-3xl">Crear cuenta</h1>
+            <p className="text-sm text-muted">El correo y la contraseña se guardan en la base de CLIPRD. La contraseña queda cifrada con bcrypt.</p>
+            <label className="field"><span className="label">Nombre</span><input className="input" required minLength={2} value={name} onChange={(event) => setName(event.target.value)} /></label>
+            <label className="field"><span className="label">Correo</span><input className="input" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+            <label className="field"><span className="label">Contraseña</span><input className="input" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            <button className="btn btn-primary w-full" disabled={pending}>{pending ? "Creando…" : "Crear cuenta"}</button>
+            <p className="text-sm text-muted">¿Ya tienes cuenta? <Link to="/login" className="text-neon underline-offset-4 hover:underline">Entrar</Link></p>
+          </form>
         ) : null}
         {user && profile.data === null && !profile.isLoading ? (
           <Onboarding
@@ -206,18 +287,9 @@ export function PoliciesPage() {
 
 export function DashboardGate() {
   return (
-    <main style={{ minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", textAlign: "center" }}>
-      <div>
-        <h1 style={{ fontSize: "32px", fontWeight: "800" }}>Panel Próximamente 🚀</h1>
-        <p style={{ marginTop: "12px", opacity: 0.8 }}>
-          Estamos preparando tu panel de clippers.<br />
-          Mientras tanto, únete por WhatsApp para empezar a ganar.
-        </p>
-        <div style={{ marginTop: "20px" }}>
-          <Link to="/" style={{ background: "#22c55e", color: "white", padding: "12px 20px", borderRadius: "10px", fontWeight: "700" }}>Volver al inicio</Link>
-        </div>
-      </div>
-    </main>
+    <Authed>
+      {(profile) => <Navigate to={profile.role === "admin" ? "/admin" : "/clipper/dashboard"} />}
+    </Authed>
   );
 }
 

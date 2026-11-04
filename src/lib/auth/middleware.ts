@@ -1,14 +1,16 @@
 import { createMiddleware } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 
 /**
- * No hay inicio de sesión. Cada función del servidor usa el administrador
- * abierto de CLIPRD, con un user id real, para que el perfil nunca se inserte
- * con user_id vacío.
+ * Sesión propia de CLIPRD. El id sale de la cookie de Better Auth
+ * (email + contraseña). Sin sesión, la función responde no autorizado.
  */
 export const authMiddleware = createMiddleware({ type: "function" }).server(async ({ next }) => {
   const { assertSameSiteRequest } = await import("./isolation.server");
-  const { ensureOpenAdminId } = await import("@/server/domain.server");
+  const { requireUserId } = await import("./verify.server");
   assertSameSiteRequest();
-  const userId = await ensureOpenAdminId();
+  const header = getRequest()?.headers.get("authorization") ?? "";
+  const bearer = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : undefined;
+  const userId = await requireUserId(bearer);
   return next({ context: { userId } });
 });

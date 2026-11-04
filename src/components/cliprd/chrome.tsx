@@ -80,19 +80,15 @@ export function Authed({
   });
   if (profile.isPending) return <Boot />;
   if (profile.isError) {
+    const message = profile.error instanceof Error ? profile.error.message : "Error";
+    if (message === "Unauthorized" || message.includes("no autorizado")) return <Navigate to="/login" />;
     return (
       <main className="grid min-h-screen place-items-center px-6 text-center">
-        <p className="max-w-md text-muted">{profile.error instanceof Error ? profile.error.message : "Error"}</p>
+        <p className="max-w-md text-muted">{message}</p>
       </main>
     );
   }
-  if (!profile.data) {
-    return (
-      <main className="grid min-h-screen place-items-center px-6 text-center">
-        <p className="max-w-md text-muted">No se pudo abrir el panel.</p>
-      </main>
-    );
-  }
+  if (!profile.data) return <Navigate to="/register" />;
   if (profile.data.status === "suspended" || profile.data.status === "inactive") {
     return <Locked profile={profile.data} />;
   }
