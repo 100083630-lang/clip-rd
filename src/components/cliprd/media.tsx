@@ -30,7 +30,14 @@ export function ClipPoster({
 
 export function ClipGallery({ clips }: { clips: Clip[] }) {
   if (clips.length === 0) {
-    return <p className="text-sm text-muted">Todavía no hay publicaciones en esta vista. Cuando un clipper registre un enlace, la tarjeta sale aquí con su miniatura real.</p>;
+    return (
+      <article className="card grid min-h-72 place-items-center p-6 text-center">
+        <div>
+          <p className="text-lg font-semibold">Todavía no hay clips</p>
+          <p className="mt-2 max-w-sm text-sm text-muted">Cuando registres un enlace de TikTok o YouTube, la tarjeta sale aquí con su miniatura, duración y vistas reales.</p>
+        </div>
+      </article>
+    );
   }
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -38,14 +45,14 @@ export function ClipGallery({ clips }: { clips: Clip[] }) {
         <article key={clip.id} className="card overflow-hidden">
           <ClipPoster clip={clip} tall />
           <div className="space-y-3 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <p className="line-clamp-2 text-sm text-muted">{clip.description || clip.ownerName}</p>
+            <p className="line-clamp-2 text-sm text-muted">{clip.description || `${clip.ownerName}${clip.channelName ? ` · ${clip.channelName}` : ""}`}</p>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-md bg-bg px-2 py-1 text-xs font-semibold text-neon">{platformName(clip.platformId)}</span>
               <StatusBadge value={clip.status} />
             </div>
-            <p className="text-xs text-muted">{clip.ownerName}{clip.channelName ? ` · ${clip.channelName}` : ""}</p>
             <p className="text-sm">
               <span className="stat-value text-2xl">{formatViews(clip.statsVerified ? clip.validViews : clip.publicViews)}</span>
-              <span className="text-muted"> {clip.statsVerified ? "vistas válidas" : "vistas observadas, no liquidadas"}</span>
+              <span className="text-muted"> {clip.statsVerified ? "vistas válidas" : "vistas observadas"}</span>
             </p>
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold text-neon">{formatUsd(clip.earning)}</p>

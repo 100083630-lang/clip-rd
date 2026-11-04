@@ -58,7 +58,11 @@ export function AdminHome({ profile }: { profile: Profile }) {
   const series = chart === "daily" ? data.data?.daily : chart === "weekly" ? data.data?.weekly : data.data?.monthly;
   return (
     <Shell profile={profile}>
-      <PageTitle kicker="AGENCIA" title="Panel" text="Los totales de dinero salen del libro de movimientos, no de una suma repetida de vistas." />
+      <h2 className="mb-1 text-3xl">Clips recientes</h2>
+      <p className="mb-4 text-sm text-muted">Miniatura, vistas y dinero de cada publicación real. No hay puntaje inventado.</p>
+      <section className="mb-8">
+        <ClipGallery clips={(recent.data ?? []).slice(0, 6)} />
+      </section>
       <div className="mb-4 flex flex-wrap gap-2">
         <select className="select max-w-48" value={platform} onChange={(event) => setPlatform(event.target.value)}>
           <option value="all">Todas</option>
@@ -69,10 +73,6 @@ export function AdminHome({ profile }: { profile: Profile }) {
         <input className="input max-w-40" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
         <input className="input max-w-40" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
       </div>
-      <section className="mb-8">
-        <h2 className="mb-3 text-xl">Clips recientes</h2>
-        <ClipGallery clips={(recent.data ?? []).slice(0, 6)} />
-      </section>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Clippers" value={String(cards?.clippers ?? 0)} hint={`${cards?.activeClippers ?? 0} activos`} />
         <Stat label="Publicaciones" value={String(cards?.posts ?? 0)} hint={`${cards?.pendingPosts ?? 0} por revisar`} />

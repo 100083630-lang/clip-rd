@@ -21,25 +21,47 @@ import type { Profile, ReportTable } from "@/lib/cliprd/types";
 import { getMyProfile, getNotifications, markNotificationsRead } from "@/server/cliprd";
 import { Logo } from "./logo";
 
-const ADMIN = [
-  { to: "/admin", label: "Panel", icon: LayoutDashboard, exact: true },
-  { to: "/admin/clippers", label: "Clippers", icon: Users },
-  { to: "/admin/clips", label: "Publicaciones", icon: Clapperboard },
-  { to: "/admin/payments", label: "Pagos", icon: Wallet },
-  { to: "/admin/rates", label: "Tarifas", icon: BadgeDollarSign },
-  { to: "/admin/reports", label: "Reportes", icon: FileBarChart },
-  { to: "/ranking", label: "Ranking", icon: Trophy },
-  { to: "/admin/settings", label: "APIs", icon: Settings },
+const ADMIN_GROUPS = [
+  {
+    label: "Operación",
+    items: [
+      { to: "/admin", label: "Panel", icon: LayoutDashboard, exact: true },
+      { to: "/admin/clips", label: "Publicaciones", icon: Clapperboard },
+      { to: "/admin/clippers", label: "Clippers", icon: Users },
+      { to: "/ranking", label: "Ranking", icon: Trophy },
+      { to: "/admin/payments", label: "Pagos", icon: Wallet },
+    ],
+  },
+  {
+    label: "Ajustes",
+    items: [
+      { to: "/admin/rates", label: "Tarifas", icon: BadgeDollarSign },
+      { to: "/admin/reports", label: "Reportes", icon: FileBarChart },
+      { to: "/notifications", label: "Avisos", icon: Bell },
+      { to: "/admin/settings", label: "APIs", icon: Settings },
+    ],
+  },
 ] as const;
 
-const CLIPPER = [
-  { to: "/clipper/dashboard", label: "Panel", icon: LayoutDashboard },
-  { to: "/clipper/register-clip", label: "Registrar", icon: Plus },
-  { to: "/clipper/my-clips", label: "Mis clips", icon: Clapperboard },
-  { to: "/clipper/earnings", label: "Ganancias", icon: BadgeDollarSign },
-  { to: "/clipper/payments", label: "Pagos", icon: Wallet },
-  { to: "/ranking", label: "Ranking", icon: Trophy },
-  { to: "/clipper/profile", label: "Perfil", icon: Users },
+const CLIPPER_GROUPS = [
+  {
+    label: "Mi trabajo",
+    items: [
+      { to: "/clipper/dashboard", label: "Panel", icon: LayoutDashboard, exact: true },
+      { to: "/clipper/register-clip", label: "Registrar", icon: Plus },
+      { to: "/clipper/my-clips", label: "Mis clips", icon: Clapperboard },
+      { to: "/clipper/earnings", label: "Ganancias", icon: BadgeDollarSign },
+      { to: "/ranking", label: "Ranking", icon: Trophy },
+    ],
+  },
+  {
+    label: "Ajustes",
+    items: [
+      { to: "/clipper/payments", label: "Pagos", icon: Wallet },
+      { to: "/notifications", label: "Avisos", icon: Bell },
+      { to: "/clipper/profile", label: "Perfil", icon: Users },
+    ],
+  },
 ] as const;
 
 export function Boot() {
@@ -110,16 +132,16 @@ export function Shell({ profile, children }: { profile: Profile; children: React
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
-  const items = profile.role === "admin" ? ADMIN : CLIPPER;
+  const groups = profile.role === "admin" ? ADMIN_GROUPS : CLIPPER_GROUPS;
   const notes = useQuery({
     queryKey: ["notes", profile.userId],
     queryFn: () => getNotifications(),
   });
   const unread = (notes.data ?? []).filter((note) => !note.read_at).length;
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
-      <aside className="no-print sticky top-0 z-20 border-b border-border bg-bg/95 backdrop-blur md:h-screen md:border-b-0 md:border-r">
-        <div className="flex items-center justify-between px-4 py-3 md:px-5 md:py-5">
+    <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
+      <aside className="no-print sticky top-0 z-20 border-b border-border bg-surface md:h-screen md:overflow-y-auto md:border-b-0 md:border-r">
+        <div className="flex items-center justify-between px-4 py-4">
           <Link to={profile.role === "admin" ? "/admin" : "/clipper/dashboard"}>
             <Logo size="sm" />
           </Link>
@@ -127,22 +149,27 @@ export function Shell({ profile, children }: { profile: Profile; children: React
             {open ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
         </div>
-        <nav className={`${open ? "grid" : "hidden"} gap-1 px-3 pb-4 md:grid`}>
-          {items.map((item) => {
-            const active = "exact" in item && item.exact ? path === item.to : path.startsWith(item.to);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={() => setOpen(false)}
-                className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold ${active ? "bg-surface text-neon glow-active" : "text-muted hover:bg-surface hover:text-fg"}`}
-              >
-                <Icon className="size-4" />
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav className={`${open ? "grid" : "hidden"} content-start px-3 pb-4 md:grid`}>
+          {groups.map((group) => (
+            <div key={group.label}>
+              <p className="side-label">{group.label}</p>
+              {group.items.map((item) => {
+                const active = "exact" in item && item.exact ? path === item.to : path.startsWith(item.to);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setOpen(false)}
+                    className={`mb-1 flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold ${active ? "nav-pill" : "text-muted hover:bg-bg hover:text-fg"}`}
+                  >
+                    <Icon className="size-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="hidden border-t border-border px-4 py-4 md:block">
           <p className="truncate text-sm font-semibold">{profile.displayName}</p>
@@ -162,7 +189,7 @@ export function Shell({ profile, children }: { profile: Profile; children: React
                 void navigate({ to: "/admin/clips", search: { q: query } });
               }}
             >
-              <input className="input" placeholder="Buscar publicación" value={query} onChange={(event) => setQuery(event.target.value)} />
+              <input className="search" placeholder="Buscar..." value={query} onChange={(event) => setQuery(event.target.value)} />
             </form>
           ) : (
             <p className="text-xs font-bold tracking-[0.16em] text-muted">ORIGEN SIMPLE</p>
