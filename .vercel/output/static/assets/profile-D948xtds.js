@@ -1,1 +1,0 @@
-import{c as e}from"./useSelector-Ct_yB3SC.js";import{t}from"./chrome-Cwu74RjN.js";import{a as n}from"./clipper-pages-D6VmMRw6.js";var r=e(),i=()=>(0,r.jsx)(t,{role:`clipper`,children:e=>(0,r.jsx)(n,{profile:e})});export{i as component};

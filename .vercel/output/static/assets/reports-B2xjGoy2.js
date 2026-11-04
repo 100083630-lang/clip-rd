@@ -1,1 +1,0 @@
-import{t as e}from"./chrome-R9Ds1ZfO.js";import{E as t}from"./index-CJ7NvtZY.js";import{o as n}from"./admin-pages-B_8cWoO9.js";var r=t(),i=()=>(0,r.jsx)(e,{role:`admin`,children:e=>(0,r.jsx)(n,{profile:e})});export{i as component};

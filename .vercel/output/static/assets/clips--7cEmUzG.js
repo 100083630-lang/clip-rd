@@ -1,1 +1,0 @@
-import{t as e}from"./chrome-R9Ds1ZfO.js";import{E as t,t as n}from"./index-CJ7NvtZY.js";import{r}from"./admin-pages-B_8cWoO9.js";var i=t(),a=function(){let{q:t}=n.useSearch();return(0,i.jsx)(e,{role:`admin`,children:e=>(0,i.jsx)(r,{profile:e,initialQuery:t})})};export{a as component};
