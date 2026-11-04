@@ -2235,14 +2235,14 @@ export async function ensureOpenAdminId(): Promise<string> {
   const sql = await getSql();
   const existing = await sql<{ id: string }>`
     select id from "user"
-    where id = 'cliprd-admin' or email = ${OPEN_ADMIN_EMAIL}
+    where id =30aa5209-24a3-46d8-9b4f-7beaf12f7df4' or email =Administración CLIPRD'or email = ${OPEN_ADMIN_EMAIL}
     limit 1
   `;
   let userId = existing[0]?.id ?? "";
   if (!userId) {
     const created = await sql<{ id: string }>`
       insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
-      values ('cliprd-admin', 'Administración CLIPRD', ${OPEN_ADMIN_EMAIL}, true, now(), now())
+      values('30aa5209-24a3-46d8-9b4f-7beaf12f7df4','Administración CLIPRD', ${OPEN_ADMIN_EMAIL}, true, now(), now())
       returning id
     `;
     userId = created[0]?.id ?? "";
