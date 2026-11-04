@@ -131,7 +131,7 @@ export function LoginPage() {
           setPending(true);
           setError("");
           void authClient.signIn
-            .email({ email, password })
+            .email({ email, password, fetchOptions: { headers: { "Content-Type": "application/json" } } })
             .then(async ({ error: signError }) => {
               if (signError) throw new Error("Correo o contraseña incorrectos.");
               const profile = await import("@/server/cliprd").then((mod) => mod.getMyProfile());
@@ -197,7 +197,7 @@ export function RegisterPage() {
               setPending(true);
               setError("");
               void authClient.signUp
-                .email({ email, password, name })
+                .email({ email, password, name, fetchOptions: { headers: { "Content-Type": "application/json" } } })
                 .then(({ error: signError }) => {
                   if (signError) throw new Error(signError.message ?? "No se pudo crear la cuenta.");
                   void navigate({ to: "/register" });
