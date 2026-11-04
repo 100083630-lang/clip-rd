@@ -33,7 +33,7 @@ create table if not exists rates (
 );
 
 create table if not exists clips (
-  id serial primary key,
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles (user_id),
   provider text not null check (provider in ('tiktok', 'youtube')),
   platform_id text not null references platforms (id),
@@ -74,7 +74,7 @@ create table if not exists clips (
 
 create table if not exists clip_statistics (
   id serial primary key,
-  clip_id integer not null references clips (id) on delete cascade,
+  clip_id uuid not null references clips (id) on delete cascade,
   public_views bigint not null,
   valid_views bigint not null,
   likes bigint,
@@ -88,7 +88,7 @@ create table if not exists clip_statistics (
 
 create table if not exists earnings (
   id serial primary key,
-  clip_id integer references clips (id) on delete restrict,
+  clip_id uuid references clips (id) on delete restrict,
   user_id uuid not null,
   platform_id text,
   views_delta bigint not null default 0,
