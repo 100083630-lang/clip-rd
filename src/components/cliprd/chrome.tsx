@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Navigate, useRouterState } from "@tanstack/react-router";
+import { Link, Navigate, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   BadgeDollarSign,
   Bell,
@@ -31,7 +31,7 @@ const ADMIN = [
   { to: "/admin/rates", label: "Tarifas", icon: BadgeDollarSign },
   { to: "/admin/reports", label: "Reportes", icon: FileBarChart },
   { to: "/ranking", label: "Ranking", icon: Trophy },
-  { to: "/admin/settings", label: "Ajustes", icon: Settings },
+  { to: "/admin/settings", label: "APIs", icon: Settings },
 ] as const;
 
 const CLIPPER = [
@@ -106,6 +106,8 @@ function Locked({ profile }: { profile: Profile }) {
 
 export function Shell({ profile, children }: { profile: Profile; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
   const items = profile.role === "admin" ? ADMIN : CLIPPER;
   const notes = useQuery({
@@ -133,7 +135,7 @@ export function Shell({ profile, children }: { profile: Profile; children: React
                 key={item.to}
                 to={item.to}
                 onClick={() => setOpen(false)}
-                className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold ${active ? "bg-surface text-neon" : "text-muted hover:bg-surface hover:text-fg"}`}
+                className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold ${active ? "bg-surface text-neon glow-active" : "text-muted hover:bg-surface hover:text-fg"}`}
               >
                 <Icon className="size-4" />
                 {item.label}
@@ -151,8 +153,20 @@ export function Shell({ profile, children }: { profile: Profile; children: React
       </aside>
       <div className="min-w-0">
         <header className="no-print flex items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-8">
-          <p className="text-xs font-bold tracking-[0.16em] text-muted">ORIGEN SIMPLE</p>
-          <Link to="/notifications" className="btn btn-ghost relative h-11 px-3">
+          {profile.role === "admin" ? (
+            <form
+              className="min-w-0 flex-1"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void navigate({ to: "/admin/clips", search: { q: query } });
+              }}
+            >
+              <input className="input" placeholder="Buscar publicación" value={query} onChange={(event) => setQuery(event.target.value)} />
+            </form>
+          ) : (
+            <p className="text-xs font-bold tracking-[0.16em] text-muted">ORIGEN SIMPLE</p>
+          )}
+          <Link to="/notifications" className="btn btn-ghost relative h-11 shrink-0 px-3">
             <Bell className="size-4" />
             {unread > 0 ? <span className="absolute right-2 top-2 size-2 rounded-full bg-neon" /> : null}
           </Link>

@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { GROK_PROVIDERS, authClient, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { formatUsd } from "@/lib/cliprd/format";
 import { TERMS_VERSION } from "@/lib/cliprd/labels";
@@ -30,10 +29,7 @@ export function HomePage() {
         <div className="flex gap-2 sm:shrink-0">
           {isPending ? <div className="h-11 w-28 rounded-md bg-surface" /> : null}
           {!isPending && !user ? (
-            <>
-              <Link to="/login" className="btn btn-ghost">Entrar</Link>
-              <Link to="/register" className="btn btn-primary">Crear cuenta</Link>
-            </>
+            <Link to="/login" className="btn btn-primary">Panel de administración</Link>
           ) : null}
           {!isPending && user ? <Link to="/dashboard" className="btn btn-primary">Ir al panel</Link> : null}
         </div>
@@ -49,7 +45,7 @@ export function HomePage() {
               Una agencia, dos plataformas, un solo libro. Los clippers registran TikTok y YouTube. La agencia aprueba, liquida solo las vistas nuevas y documenta cada transferencia.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/register" className="btn btn-primary">Abrir cuenta</Link>
+              <Link to="/login" className="btn btn-primary">Entrar al panel</Link>
               <Link to="/politicas" className="btn btn-ghost">Condiciones</Link>
             </div>
           </div>
@@ -104,18 +100,14 @@ export function HomePage() {
 }
 
 function authText(message: string | undefined, fallback: string) {
-  const text = message?.toLowerCase() ?? "";
-  if (text.includes("already") || text.includes("exist")) return "Ese correo ya tiene cuenta. Entra con él.";
-  if (text.includes("invalid") || text.includes("password") || text.includes("credential")) return "Correo o contraseña incorrectos.";
-  if (text.includes("origin")) return "Este origen no está autorizado para entrar.";
   return message || fallback;
 }
+
+const BEARER_KEY = "grok-auth.bearer-token";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const { user, isPending } = useCurrentUserState();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   if (!isPending && user) return <Navigate to="/dashboard" />;
@@ -123,42 +115,41 @@ export function LoginPage() {
     <main className="grid min-h-screen place-items-center px-4 py-10">
       <div className="card w-full max-w-md p-6 md:p-8">
         <Logo slogan />
-        <h1 className="mt-8 text-3xl">Entrar</h1>
-        <p className="mt-2 text-sm text-muted">Administradores y clippers usan la misma puerta. El permiso lo decide el perfil.</p>
-        <form
-          className="mt-6 space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
+        <h1 className="mt-8 text-3xl">Administración</h1>
+        <p className="mt-2 text-sm text-muted">
+          Entras directo al panel de CLIPRD. No hay inicio con Google ni contraseña.
+        </p>
+        {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
+        <button
+          className="btn btn-primary mt-6 w-full"
+          type="button"
+          disabled={pending}
+          onClick={() => {
             setPending(true);
             setError("");
-            void authClient.signIn.email({ email, password, callbackURL: "/dashboard" }).then(async (result) => {
-              if (result.error) {
-                setError(authText(result.error.message, "No se pudo entrar."));
+            void import("@/server/cliprd")
+              .then((mod) => mod.enterAdmin())
+              .then(async (result) => {
+                if (result.token) {
+                  try {
+                    window.sessionStorage.setItem(BEARER_KEY, result.token);
+                  } catch {
+                    /* cookie session still applies when the browser allows it */
+                  }
+                }
+                await navigate({ to: "/admin" });
+                window.location.assign("/admin");
+              })
+              .catch((reason: unknown) => {
+                setError(authText(reason instanceof Error ? reason.message : undefined, "No se pudo abrir el panel."));
                 setPending(false);
-                return;
-              }
-              await navigate({ to: "/dashboard" });
-            });
+              });
           }}
         >
-          <label className="field"><span className="label">Correo</span><input className="input" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-          <label className="field"><span className="label">Contraseña</span><input className="input" type="password" required minLength={8} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-          {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <button className="btn btn-primary w-full" type="submit" disabled={pending}>{pending ? "Entrando…" : "Entrar"}</button>
-        </form>
-        <div className="my-5 h-px bg-border" />
-        <div className="space-y-2">
-          {GROK_PROVIDERS.map((provider) => (
-            <button key={provider.providerId} type="button" className="btn btn-ghost w-full" onClick={() => void signIn(provider.providerId, { callbackURL: "/dashboard" })}>
-              Continuar con {provider.label}
-            </button>
-          ))}
-        </div>
-        <p className="mt-5 text-sm text-muted">
-          ¿Primera vez? <Link to="/register" className="text-fg underline-offset-4 hover:underline">Crear cuenta</Link>
-        </p>
-        <p className="mt-3 text-xs text-muted">
-          La recuperación por correo no está activa: no hay un proveedor de email configurado. Las cuentas de Google o X se recuperan en esos servicios. Un clipper de correo debe pedir ayuda a la agencia.
+          {pending ? "Abriendo panel…" : "Entrar al panel"}
+        </button>
+        <p className="mt-5 text-xs text-muted">
+          Los clippers no crean cuenta aquí. La agencia los administra desde el panel.
         </p>
       </div>
     </main>
@@ -179,7 +170,13 @@ export function RegisterPage() {
       <div className="card w-full max-w-md p-6 md:p-8">
         <Logo slogan />
         {isPending || (user && profile.isLoading) ? <p className="mt-8 text-sm text-muted">Cargando…</p> : null}
-        {!isPending && !user ? <SignUpForm /> : null}
+        {!isPending && !user ? (
+          <div className="mt-8 space-y-4">
+            <h1 className="text-3xl">Solo administración</h1>
+            <p className="text-sm text-muted">Las cuentas públicas y el inicio con Google quedaron fuera. Entra al panel.</p>
+            <Link to="/login" className="btn btn-primary w-full">Ir al panel</Link>
+          </div>
+        ) : null}
         {user && profile.data === null && !profile.isLoading ? (
           <Onboarding
             onDone={() => {
@@ -189,39 +186,6 @@ export function RegisterPage() {
         ) : null}
       </div>
     </main>
-  );
-}
-
-function SignUpForm() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
-  return (
-    <form
-      className="mt-8 space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setPending(true);
-        setError("");
-        void authClient.signUp.email({ name, email, password, callbackURL: "/register" }).then((result) => {
-          if (result.error) {
-            setError(authText(result.error.message, "No se pudo crear la cuenta."));
-            setPending(false);
-          }
-        });
-      }}
-    >
-      <h1 className="text-3xl">Crear cuenta</h1>
-      <p className="text-sm text-muted">La primera cuenta de la agencia queda como administrador. Las siguientes entran como clippers.</p>
-      <label className="field"><span className="label">Nombre</span><input className="input" required value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label className="field"><span className="label">Correo</span><input className="input" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <label className="field"><span className="label">Contraseña</span><input className="input" type="password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
-      <button className="btn btn-primary w-full" disabled={pending}>{pending ? "Creando…" : "Continuar"}</button>
-      <p className="text-sm text-muted">¿Ya tienes cuenta? <Link to="/login" className="text-fg underline-offset-4 hover:underline">Entrar</Link></p>
-    </form>
   );
 }
 

@@ -4,5 +4,11 @@ import { Authed } from "@/components/cliprd/chrome";
 
 export const Route = createFileRoute("/admin/clips")({
   ssr: false,
-  component: () => <Authed role="admin">{(profile) => <ClipsAdminPage profile={profile} />}</Authed>,
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: typeof search.q === "string" ? search.q : "",
+  }),
+  component: function AdminClipsRoute() {
+    const { q } = Route.useSearch();
+    return <Authed role="admin">{(profile) => <ClipsAdminPage profile={profile} initialQuery={q} />}</Authed>;
+  },
 });

@@ -6,10 +6,9 @@ Esta aplicación corre en el stack de publicación del producto: TanStack Start,
 
 ## Cuentas
 
-- La primera persona que completa la ficha queda como administrador de Origen Simple.
-- Las siguientes entran como clippers pendientes, salvo que usen una invitación de un solo uso.
-- Se puede entrar con correo y contraseña, Google o X.
-- No hay correo de recuperación: no hay un proveedor de email configurado. No se simula.
+- El panel se abre como administración, sin Google y sin contraseña.
+- Los clippers no se registran solos. La agencia los lleva desde el panel.
+- No hay correo de recuperación.
 
 ## Variables de entorno del servidor
 
@@ -18,13 +17,13 @@ No las pongas en el frontend. No hay archivo `.env` en este proyecto: al publica
 | Variable | Uso |
 | --- | --- |
 | `DATABASE_URL` | La inyecta la plataforma al publicar. |
-| `YOUTUBE_API_KEY` | YouTube Data API v3. Método `videos.list` con `snippet`, `contentDetails`, `statistics`, `status`. El marcador `MI_CLAVE_DE_YOUTUBE` no llama a Google y no inventa vistas. |
+| `YOUTUBE_API_KEY` | Opcional. También se pega en Ajustes y queda en la base. YouTube Data API v3, `videos.list`. El marcador `MI_CLAVE_DE_YOUTUBE` no llama a Google y no inventa vistas. |
 | `TIKTOK_CLIENT_KEY` | App de TikTok. Login Kit + `video.list`. |
 | `TIKTOK_CLIENT_SECRET` | Secreto de esa app. |
 | `TIKTOK_REDIRECT_URI` | Opcional. Si no está, se usa el origen de la petición + `/api/tiktok/callback`. Debe coincidir con el registrado en TikTok. |
 | `CRON_SECRET` | `POST /api/cron/sync` con `Authorization: Bearer <secreto>`. Sin ella el endpoint responde 503. |
 
-YouTube: Google Cloud → activa YouTube Data API v3 → crea una API key. Cada consulta cuesta 1 unidad. CLIPRD se detiene cerca de 9,500 unidades al día.
+YouTube: Google Cloud → activa YouTube Data API v3 → Credenciales → Clave de API (no OAuth, no contraseña). Pégala en Ajustes. No la restrinjas por sitio web: la llama el servidor de https://clip-rd.vercel.app. Cada consulta cuesta 1 unidad. CLIPRD se detiene cerca de 9,500 unidades al día.
 
 TikTok: la API oficial exige una app aprobada y OAuth de cada cuenta (`user.info.basic`, `video.list`). El clipper conecta su cuenta en Perfil. Hasta entonces CLIPRD valida el enlace y, si la página pública lo trae, guarda una cifra observada. Eso no es una estadística verificada y no se liquida sola.
 

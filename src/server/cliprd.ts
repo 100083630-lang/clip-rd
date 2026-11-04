@@ -405,6 +405,30 @@ export const getSettings = createServerFn({ method: "GET" })
     return run(...args);
   });
 
+export const enterAdmin = createServerFn({ method: "POST" }).handler(async () => {
+  const { openAdminDoor } = await import("./domain.server");
+  return openAdminDoor();
+});
+
+export const saveIntegrationKeys = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) =>
+    parse(
+      z.object({
+        youtubeApiKey: z.string().trim().max(200).optional(),
+        clearYoutube: z.boolean().optional(),
+        tiktokClientKey: z.string().trim().max(200).optional(),
+        tiktokClientSecret: z.string().trim().max(200).optional(),
+        clearTiktok: z.boolean().optional(),
+      }),
+      input,
+    ),
+  )
+  .handler(async (...args: Parameters<ServerDomain["saveIntegrationKeys"]>) => {
+    const { saveIntegrationKeys: run } = await import("./domain.server");
+    return run(...args);
+  });
+
 export const updateSettings = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) =>
@@ -451,6 +475,13 @@ export const probeYoutube = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async (...args: Parameters<ServerDomain["probeYoutube"]>) => {
     const { probeYoutube: run } = await import("./domain.server");
+    return run(...args);
+  });
+
+export const probeTikTok = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async (...args: Parameters<ServerDomain["probeTikTok"]>) => {
+    const { probeTikTok: run } = await import("./domain.server");
     return run(...args);
   });
 

@@ -154,6 +154,25 @@
     background: var(--color-surface-2);
   }
 
+  .poster-tall {
+    aspect-ratio: 4 / 5;
+  }
+
+  .play-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: grid;
+    width: 3rem;
+    height: 3rem;
+    place-items: center;
+    translate: -50% -50%;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--color-bg) 55%, transparent);
+    color: var(--color-fg);
+    border: 1px solid color-mix(in oklab, var(--color-fg) 30%, transparent);
+  }
+
   .glow-active {
     border-color: color-mix(in oklab, var(--color-neon) 70%, var(--color-border));
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-neon) 30%, transparent);

@@ -1,4 +1,5 @@
 import { dbSource, getSql, type Sql } from "@/lib/db";
+import { secretState } from "@/lib/cliprd/integrations";
 import { TERMS_VERSION } from "@/lib/cliprd/labels";
 import {
   amountToCents,
@@ -10,10 +11,12 @@ import {
 import type { Balance, Clip, Profile, RankRow, ReportTable } from "@/lib/cliprd/types";
 import { classifyYoutube, parseClipUrl, parseIsoDuration } from "@/lib/cliprd/urls";
 import { getRequest } from "@tanstack/react-start/server";
+import { randomBytes } from "node:crypto";
 import {
   buildTikTokAuth,
   exchangeTikTokCode,
   fetchOembed,
+  invalidateIntegrations,
   loadIntegrations,
   readTikTokPublic,
   refreshTikTokToken,
@@ -357,9 +360,9 @@ type YtItem = {
 };
 
 async function youtubeList(sql: Sql, ids: string[]): Promise<{ items: YtItem[] } | { error: string }> {
-  const key = loadIntegrations().youtubeKey;
+  const key = (await loadIntegrations()).youtubeKey;
   if (!key) {
-    const state = loadIntegrations().youtube;
+    const state = (await loadIntegrations()).youtube;
     return {
       error:
         state === "placeholder"
@@ -506,7 +509,7 @@ export async function runScheduledSync(): Promise<{ synced: number; errors: stri
     [String(minutes)],
   );
   return syncRows(sql, rows.map(mapClip), "cron").then(async (youtube) => {
-    if (!loadIntegrations().tiktok) return youtube;
+    if (!(await loadIntegrations()).tiktok) return youtube;
     const links = await sql<{ user_id: string }>`select user_id from tiktok_connections`;
     let synced = youtube.synced;
     const errors = [...youtube.errors];
@@ -521,7 +524,7 @@ export async function runScheduledSync(): Promise<{ synced: number; errors: stri
 
 async function syncRows(sql: Sql, clips: Clip[], actorId: string) {
   const errors: string[] = [];
-  if (!loadIntegrations().youtubeKey) {
+  if (!(await loadIntegrations()).youtubeKey) {
     return { synced: 0, errors: ["YouTube no está listo. No se inventaron estadísticas."] };
   }
   const youtube = clips.filter((clip) => clip.provider === "youtube");
@@ -876,7 +879,7 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
           statsError = "Cifra de la página pública de TikTok. No es video.list y no se liquida sola.";
           warnings.push("Se guardó una cifra pública sin verificar. No entra al libro hasta que un administrador la justifique o conectes TikTok.");
         } else {
-          statsError = loadIntegrations().tiktok
+          statsError = (await loadIntegrations()).tiktok
             ? "Conecta tu cuenta de TikTok en Perfil para leer view_count con video.list."
             : "TikTok no entregó reproducciones. oEmbed solo confirma título y autor.";
           warnings.push("Las reproducciones de TikTok no están verificadas. No se suman como vistas válidas.");
@@ -958,7 +961,7 @@ async function freshTikTokToken(sql: Sql, userId: string): Promise<string | null
 }
 
 async function lookupTikTokVideo(sql: Sql, userId: string, videoId: string): Promise<TikTokVideo | null> {
-  if (!loadIntegrations().tiktok || videoId.startsWith("url:")) return null;
+  if (!(await loadIntegrations()).tiktok || videoId.startsWith("url:")) return null;
   try {
     const token = await freshTikTokToken(sql, userId);
     if (!token) return null;
@@ -1021,7 +1024,7 @@ async function applyTikTokOfficial(sql: Sql, clip: Clip, video: TikTokVideo, act
 }
 
 export async function syncUserTikTok(sql: Sql, userId: string, actorId: string): Promise<{ synced: number; errors: string[] }> {
-  if (!loadIntegrations().tiktok) {
+  if (!(await loadIntegrations()).tiktok) {
     return { synced: 0, errors: ["TikTok no tiene client key y secret. No se inventaron vistas."] };
   }
   let token: string | null;
@@ -1648,7 +1651,7 @@ export const syncClip = async ({ context, data }: { context: { userId: string };
       if (!video) {
         return {
           ok: false,
-          message: loadIntegrations().tiktok
+          message: (await loadIntegrations()).tiktok
             ? "TikTok no devolvió ese video. La cuenta dueña debe autorizar video.list y el clip tiene que ser de esa cuenta."
             : "Faltan TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. No se marcaron vistas como verificadas.",
         };
@@ -1861,16 +1864,22 @@ export const getSettings = async ({ context }: { context: { userId: string } }) 
     const integrations = await sql<{ id: string; label: string; status_note: string | null }>`
       select id, label, status_note from api_integrations order by id
     `;
-    const integrationsEnv = loadIntegrations();
+    const integrationsEnv = await loadIntegrations();
+    const request = getRequest();
+    const origin = request ? new URL(request.url).origin : "https://clip-rd.vercel.app";
     return {
       settings: settings[0],
       rates,
       integrations,
       env: {
         youtube: integrationsEnv.youtube,
+        youtubeHint: integrationsEnv.youtubeHint,
         tiktok: integrationsEnv.tiktok,
+        tiktokHint: integrationsEnv.tiktokHint,
         cron: Boolean(process.env.CRON_SECRET?.trim()),
         database: dbSource === "neon" ? "Neon Postgres" : "Postgres de vista previa",
+        tiktokRedirect: `${origin}/api/tiktok/callback`,
+        productionRedirect: "https://clip-rd.vercel.app/api/tiktok/callback",
       },
     };
   };
@@ -2035,14 +2044,14 @@ export const getReports = async ({ context, data }: { context: { userId: string 
 export const probeYoutube = async ({ context }: { context: { userId: string } }) => {
   const sql = await getSql();
   await requireAdmin(sql, context.userId);
-  const state = loadIntegrations().youtube;
+  const state = (await loadIntegrations()).youtube;
   if (state !== "ready") {
     return {
       ok: false as const,
       message:
         state === "placeholder"
           ? "La clave guardada es un marcador, no una API key de Google. No se llamó a videos.list."
-          : "No hay YOUTUBE_API_KEY en el servidor.",
+          : "No hay clave de YouTube. Pégala en Ajustes. No se inventan vistas.",
     };
   }
   const result = await youtubeList(sql, ["jNQXAC9IVRw"]);
@@ -2056,10 +2065,56 @@ export const probeYoutube = async ({ context }: { context: { userId: string } })
   };
 };
 
+export const probeTikTok = async ({ context }: { context: { userId: string } }) => {
+  const sql = await getSql();
+  await requireAdmin(sql, context.userId);
+  const config = await loadIntegrations();
+  if (!config.tiktokKey || !config.tiktokSecret) {
+    return {
+      ok: false as const,
+      message: "Faltan client key y client secret de TikTok. No es una API key como la de YouTube, y no se inventan vistas.",
+    };
+  }
+  const redirectUri = tiktokRedirectUri();
+  let response: Response;
+  try {
+    response = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_key: config.tiktokKey,
+        client_secret: config.tiktokSecret,
+        code: "cliprd-probe",
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch {
+    return { ok: false as const, message: "No se pudo contactar a TikTok. Las claves siguen guardadas, pero no se inventaron vistas." };
+  }
+  const payload = (await response.json().catch(() => null)) as { error?: string; error_description?: string } | null;
+  const error = `${payload?.error ?? ""} ${payload?.error_description ?? ""}`.toLowerCase();
+  if (response.ok && !payload?.error) {
+    return { ok: false as const, message: "TikTok respondió sin error a un código falso. No se guardó ningún token." };
+  }
+  if (error.includes("invalid_client") || error.includes("client key") || error.includes("client_key")) {
+    return { ok: false as const, message: "TikTok no reconoció esa client key o ese secret. Tienen que ser de la misma app." };
+  }
+  if (error.includes("invalid_grant") || error.includes("invalid code") || error.includes("authorization code") || error.includes("expired")) {
+    return {
+      ok: true as const,
+      message: `TikTok reconoció la app. El código de prueba fue rechazado, que es lo correcto. Registra este redirect: ${redirectUri}`,
+    };
+  }
+  const detail = payload?.error_description || payload?.error || `TikTok respondió ${response.status}.`;
+  return { ok: false as const, message: detail };
+};
+
 export const startTikTokConnect = async ({ context }: { context: { userId: string } }) => {
   const sql = await getSql();
   const profile = await requireProfile(sql, context.userId);
-  if (!loadIntegrations().tiktok) {
+  if (!(await loadIntegrations()).tiktok) {
     throw new Error("Define TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET en el servidor antes de conectar cuentas.");
   }
   const redirectUri = tiktokRedirectUri();
@@ -2079,7 +2134,7 @@ export const getTikTokStatus = async ({ context }: { context: { userId: string }
     select display_name from tiktok_connections where user_id = ${context.userId}
   `;
   return {
-    appReady: loadIntegrations().tiktok,
+    appReady: (await loadIntegrations()).tiktok,
     connected: Boolean(rows[0]),
     name: rows[0]?.display_name ?? null,
   };
@@ -2105,7 +2160,7 @@ export const syncTiktokBatch = async ({ context }: { context: { userId: string }
   const links = await sql<{ user_id: string }>`select user_id from tiktok_connections`;
   let synced = 0;
   const errors: string[] = [];
-  if (!loadIntegrations().tiktok) {
+  if (!(await loadIntegrations()).tiktok) {
     return { synced: 0, errors: ["Sin TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. No se inventaron vistas."] };
   }
   for (const link of links) {
@@ -2171,4 +2226,113 @@ export async function finishTikTokOAuth(input: {
     return fail(error instanceof Error ? error.message : "No se pudo guardar la conexión de TikTok.");
   }
 }
+
+const DOOR_EMAIL = "admin@cliprd.local";
+
+async function ensureDoorAdmin(sql: Sql, userId: string) {
+  const existing = await sql<{ user_id: string }>`select user_id from profiles where user_id = ${userId}`;
+  if (existing[0]) {
+    await sql`
+      update profiles
+      set role = 'admin', status = 'active', updated_at = now()
+      where user_id = ${userId}
+    `;
+    return;
+  }
+  await sql`
+    insert into profiles (user_id, display_name, role, status, terms_version)
+    values (${userId}, 'Administración CLIPRD', 'admin', 'active', ${TERMS_VERSION})
+  `;
+}
+
+export async function openAdminDoor(): Promise<{ token: string }> {
+  const sql = await getSql();
+  const { auth } = await import("@/lib/auth/server");
+  const headers = getRequest()?.headers ?? new Headers();
+  const stored = await sql<{ admin_door: string | null }>`
+    select admin_door from agency_settings where id = 1
+  `;
+  let password = stored[0]?.admin_door?.trim() ?? "";
+  const signIn = (value: string) =>
+    auth.api.signInEmail({
+      body: { email: DOOR_EMAIL, password: value, rememberMe: true },
+      headers,
+    });
+  let session: { token: string | null; user: { id: string } } | null = null;
+  if (password) {
+    try {
+      session = await signIn(password);
+    } catch {
+      session = null;
+    }
+  }
+  if (!session) {
+    const next = randomBytes(24).toString("base64url");
+    try {
+      session = await auth.api.signUpEmail({
+        body: { email: DOOR_EMAIL, password: next, name: "Administración CLIPRD" },
+        headers,
+      });
+      password = next;
+      await sql`update agency_settings set admin_door = ${password} where id = 1`;
+    } catch {
+      const { hashPassword } = await import("better-auth/crypto");
+      const hash = await hashPassword(next);
+      const updated = await sql<{ id: string }>`
+        update "account" as a
+        set password = ${hash}, "updatedAt" = now()
+        from "user" as u
+        where u.email = ${DOOR_EMAIL}
+          and a."userId" = u.id
+          and a."providerId" = 'credential'
+        returning u.id
+      `;
+      if (!updated[0]) throw new Error("No se pudo preparar la cuenta de administración.");
+      password = next;
+      await sql`update agency_settings set admin_door = ${password} where id = 1`;
+      session = await signIn(password);
+    }
+  }
+  if (!session?.token) throw new Error("No se pudo abrir el panel de administración.");
+  await ensureDoorAdmin(sql, session.user.id);
+  return { token: session.token };
+}
+
+export const saveIntegrationKeys = async ({ context, data }: { context: { userId: string }; data: any }) => {
+  const sql = await getSql();
+  const admin = await requireAdmin(sql, context.userId);
+  if (data.clearYoutube) {
+    await sql`update agency_settings set youtube_api_key = null, updated_at = now() where id = 1`;
+  } else if (typeof data.youtubeApiKey === "string" && data.youtubeApiKey.trim()) {
+    const key = data.youtubeApiKey.trim();
+    if (secretState(key) !== "ready") {
+      throw new Error("Eso no es una API key de YouTube. En Google Cloud crea una API key, no un cliente OAuth ni una contraseña.");
+    }
+    await sql`update agency_settings set youtube_api_key = ${key}, updated_at = now() where id = 1`;
+  }
+  if (data.clearTiktok) {
+    await sql`
+      update agency_settings
+      set tiktok_client_key = null, tiktok_client_secret = null, updated_at = now()
+      where id = 1
+    `;
+  } else if (data.tiktokClientKey?.trim() || data.tiktokClientSecret?.trim()) {
+    const key = data.tiktokClientKey?.trim() ?? "";
+    const secret = data.tiktokClientSecret?.trim() ?? "";
+    if (secretState(key) !== "ready" || secretState(secret) !== "ready") {
+      throw new Error("TikTok necesita client key y client secret reales, los dos juntos.");
+    }
+    await sql`
+      update agency_settings
+      set tiktok_client_key = ${key}, tiktok_client_secret = ${secret}, updated_at = now()
+      where id = 1
+    `;
+  }
+  invalidateIntegrations();
+  await audit(sql, admin.userId, "integrations.save", "agency_settings", "1", {
+    youtube: Boolean(data.youtubeApiKey || data.clearYoutube),
+    tiktok: Boolean(data.tiktokClientKey || data.clearTiktok),
+  });
+  return { ok: true };
+};
 

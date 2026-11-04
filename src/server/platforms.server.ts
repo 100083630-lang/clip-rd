@@ -1,3 +1,4 @@
+import { getSql } from "@/lib/db";
 import { extractTikTokPlayCount, secretState, type SecretState } from "@/lib/cliprd/integrations";
 import { ensureServerEnv } from "@/lib/cliprd/server-env";
 
@@ -26,25 +27,67 @@ type TokenBundle = {
   scope?: string;
 };
 
-export function loadIntegrations(): {
+export type IntegrationConfig = {
   youtube: SecretState;
   youtubeKey: string | null;
   tiktok: boolean;
   tiktokKey: string | null;
   tiktokSecret: string | null;
-} {
+  youtubeHint: string | null;
+  tiktokHint: string | null;
+};
+
+let integrationCache: { at: number; value: IntegrationConfig } | null = null;
+
+export function invalidateIntegrations(): void {
+  integrationCache = null;
+}
+
+function pickSecret(stored: string | null | undefined, envValue: string | undefined): string {
+  const fromDb = stored?.trim() ?? "";
+  if (secretState(fromDb) === "ready") return fromDb;
+  const fromEnv = envValue?.trim() ?? "";
+  return secretState(fromEnv) === "ready" ? fromEnv : fromDb || fromEnv;
+}
+
+function hint(value: string): string | null {
+  if (secretState(value) !== "ready") return null;
+  return `••••${value.slice(-4)}`;
+}
+
+export async function loadIntegrations(): Promise<IntegrationConfig> {
+  if (integrationCache && Date.now() - integrationCache.at < 10_000) return integrationCache.value;
   ensureServerEnv();
-  const youtubeKey = process.env.YOUTUBE_API_KEY?.trim() || "";
-  const youtube = secretState(youtubeKey);
-  const tiktokKey = process.env.TIKTOK_CLIENT_KEY?.trim() || "";
-  const tiktokSecret = process.env.TIKTOK_CLIENT_SECRET?.trim() || "";
-  return {
-    youtube,
-    youtubeKey: youtube === "ready" ? youtubeKey : null,
-    tiktok: secretState(tiktokKey) === "ready" && secretState(tiktokSecret) === "ready",
-    tiktokKey: secretState(tiktokKey) === "ready" ? tiktokKey : null,
-    tiktokSecret: secretState(tiktokSecret) === "ready" ? tiktokSecret : null,
+  let stored = {
+    youtube_api_key: null as string | null,
+    tiktok_client_key: null as string | null,
+    tiktok_client_secret: null as string | null,
   };
+  try {
+    const sql = await getSql();
+    const rows = await sql<typeof stored>`
+      select youtube_api_key, tiktok_client_key, tiktok_client_secret
+      from agency_settings where id = 1
+    `;
+    if (rows[0]) stored = rows[0];
+  } catch {
+    // Migration not applied yet. Environment variables still count.
+  }
+  const youtubeRaw = pickSecret(stored.youtube_api_key, process.env.YOUTUBE_API_KEY);
+  const tiktokKeyRaw = pickSecret(stored.tiktok_client_key, process.env.TIKTOK_CLIENT_KEY);
+  const tiktokSecretRaw = pickSecret(stored.tiktok_client_secret, process.env.TIKTOK_CLIENT_SECRET);
+  const youtube = secretState(youtubeRaw);
+  const value: IntegrationConfig = {
+    youtube,
+    youtubeKey: youtube === "ready" ? youtubeRaw : null,
+    tiktok: secretState(tiktokKeyRaw) === "ready" && secretState(tiktokSecretRaw) === "ready",
+    tiktokKey: secretState(tiktokKeyRaw) === "ready" ? tiktokKeyRaw : null,
+    tiktokSecret: secretState(tiktokSecretRaw) === "ready" ? tiktokSecretRaw : null,
+    youtubeHint: hint(youtubeRaw),
+    tiktokHint: hint(tiktokKeyRaw),
+  };
+  integrationCache = { at: Date.now(), value };
+  return value;
 }
 
 export async function fetchOembed(url: string): Promise<OEmbed | null> {
@@ -105,7 +148,7 @@ export async function buildTikTokAuth(input: { redirectUri: string }): Promise<{
   state: string;
   verifier: string;
 }> {
-  const { tiktokKey } = loadIntegrations();
+  const { tiktokKey } = await loadIntegrations();
   if (!tiktokKey) throw new Error("Faltan TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET en el servidor.");
   const state = randomUrlSafe(24);
   const verifier = randomUrlSafe(48);
@@ -142,7 +185,7 @@ export async function exchangeTikTokCode(input: {
   verifier: string;
   redirectUri: string;
 }): Promise<TokenBundle> {
-  const { tiktokKey, tiktokSecret } = loadIntegrations();
+  const { tiktokKey, tiktokSecret } = await loadIntegrations();
   if (!tiktokKey || !tiktokSecret) throw new Error("La app de TikTok no está configurada.");
   const body = new URLSearchParams({
     client_key: tiktokKey,
@@ -156,7 +199,7 @@ export async function exchangeTikTokCode(input: {
 }
 
 export async function refreshTikTokToken(refreshToken: string): Promise<TokenBundle> {
-  const { tiktokKey, tiktokSecret } = loadIntegrations();
+  const { tiktokKey, tiktokSecret } = await loadIntegrations();
   if (!tiktokKey || !tiktokSecret) throw new Error("La app de TikTok no está configurada.");
   const body = new URLSearchParams({
     client_key: tiktokKey,

@@ -19,9 +19,11 @@ import {
   listClips,
   listInvites,
   listPayouts,
+  probeTikTok,
   probeYoutube,
   recordPayment,
   reviewClip,
+  saveIntegrationKeys,
   setPrize,
   setRate,
   syncClip,
@@ -51,6 +53,7 @@ export function AdminHome({ profile }: { profile: Profile }) {
     queryKey: ["admin-clips", "", "", "home"],
     queryFn: () => listClips({ data: { status: "", platform: "", q: "", offset: 0 } }),
   });
+  const config = useQuery({ queryKey: ["settings"], queryFn: () => getSettings() });
   const cards = data.data?.cards;
   const series = chart === "daily" ? data.data?.daily : chart === "weekly" ? data.data?.weekly : data.data?.monthly;
   return (
@@ -66,14 +69,18 @@ export function AdminHome({ profile }: { profile: Profile }) {
         <input className="input max-w-40" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
         <input className="input max-w-40" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
       </div>
+      <section className="mb-8">
+        <h2 className="mb-3 text-xl">Clips recientes</h2>
+        <ClipGallery clips={(recent.data ?? []).slice(0, 6)} />
+      </section>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Clippers" value={String(cards?.clippers ?? 0)} hint={`${cards?.activeClippers ?? 0} activos`} />
         <Stat label="Publicaciones" value={String(cards?.posts ?? 0)} hint={`${cards?.pendingPosts ?? 0} por revisar`} />
         <Stat label="Vistas del periodo" value={formatViews(cards?.views ?? 0)} hint="Solo deltas liquidados" />
         <Stat label="Ganancias" value={formatUsd(cards?.earned ?? "0")} />
-        <Stat label="TikTok" value={formatViews(cards?.tiktokViews ?? 0)} hint="Stock aprobado" />
-        <Stat label="Shorts" value={formatViews(cards?.shortsViews ?? 0)} hint="Stock aprobado" />
-        <Stat label="Videos" value={formatViews(cards?.videoViews ?? 0)} hint="Stock aprobado" />
+        <Stat label="TikTok" value={formatViews(cards?.tiktokViews ?? 0)} hint="Vistas de clips aprobados" />
+        <Stat label="Shorts" value={formatViews(cards?.shortsViews ?? 0)} hint={config.data?.env.youtube === "ready" ? "API de YouTube conectada" : "YouTube sin clave en este servidor"} />
+        <Stat label="Videos" value={formatViews(cards?.videoViews ?? 0)} hint={config.data?.env.youtube === "ready" ? "API de YouTube conectada" : "YouTube sin clave en este servidor"} />
         <Stat label="Pagos hechos" value={formatUsd(cards?.paid ?? "0")} />
         <Stat label="Pagos abiertos" value={formatUsd(cards?.pendingPay ?? "0")} />
         <Stat label="Por liquidar" value={formatUsd(cards?.outstanding ?? "0")} hint="Ganado menos pagado en el periodo" />
@@ -99,21 +106,6 @@ export function AdminHome({ profile }: { profile: Profile }) {
           <PlatformChart data={data.data?.platforms ?? []} metric="views" />
         </section>
       </div>
-      <section className="mt-4 card p-4">
-        <h2 className="mb-3 text-xl">Clippers</h2>
-        <div className="space-y-2">
-          {(data.data?.leaders ?? []).map((leader) => (
-            <div key={leader.display_name} className="flex items-center justify-between gap-3 text-sm">
-              <span>{leader.display_name}</span>
-              <span className="stat-value">{formatUsd(leader.amount)} · {formatViews(Number(leader.views))}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="mt-6">
-        <h2 className="mb-3 text-xl">Clips recientes</h2>
-        <ClipGallery clips={(recent.data ?? []).slice(0, 6)} />
-      </section>
     </Shell>
   );
 }
@@ -219,11 +211,11 @@ export function ClippersPage({ profile }: { profile: Profile }) {
   );
 }
 
-export function ClipsAdminPage({ profile }: { profile: Profile }) {
+export function ClipsAdminPage({ profile, initialQuery = "" }: { profile: Profile; initialQuery?: string }) {
   const refresh = useRefresh();
   const [status, setStatus] = useState("");
   const [platform, setPlatform] = useState("");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const clips = useQuery({
     queryKey: ["admin-clips", status, platform, q],
     queryFn: () => listClips({ data: { status, platform, q } }),
@@ -243,7 +235,14 @@ export function ClipsAdminPage({ profile }: { profile: Profile }) {
           <option value="youtube_shorts">Shorts</option>
           <option value="youtube_video">Videos</option>
         </select>
-        <button type="button" className="btn btn-ghost" onClick={() => void syncYoutubeBatch().then((result) => toast.message(`YouTube: ${result.synced}. ${result.errors.join(" ")}`)).catch(fail)}>
+        <button type="button" className="btn btn-ghost" onClick={() => void syncYoutubeBatch().then((result) => {
+          const detail = result.errors.filter(Boolean).join(" ");
+          toast.message(
+            result.synced > 0
+              ? `YouTube actualizó ${result.synced} publicaciones. ${detail}`.trim()
+              : detail || "La API respondió, pero no hay publicaciones de YouTube registradas para actualizar.",
+          );
+        }).catch(fail)}>
           Sincronizar YouTube
         </button>
         <button type="button" className="btn btn-ghost" onClick={() => void syncTiktokBatch().then((result) => toast.message(`TikTok: ${result.synced}. ${result.errors.join(" ")}`)).catch(fail)}>
@@ -543,6 +542,64 @@ function ReportView({ table }: { table: ReportTable }) {
   );
 }
 
+function KeysForm() {
+  const refresh = useRefresh();
+  const [youtubeApiKey, setYoutube] = useState("");
+  const [tiktokClientKey, setTiktokKey] = useState("");
+  const [tiktokClientSecret, setTiktokSecret] = useState("");
+  const [pending, setPending] = useState(false);
+  function save(extra: { clearYoutube?: boolean; clearTiktok?: boolean }) {
+    setPending(true);
+    void saveIntegrationKeys({
+      data: {
+        youtubeApiKey: extra.clearYoutube ? undefined : youtubeApiKey,
+        tiktokClientKey: extra.clearTiktok ? undefined : tiktokClientKey,
+        tiktokClientSecret: extra.clearTiktok ? undefined : tiktokClientSecret,
+        clearYoutube: extra.clearYoutube,
+        clearTiktok: extra.clearTiktok,
+      },
+    })
+      .then(() => {
+        setYoutube("");
+        setTiktokKey("");
+        setTiktokSecret("");
+        toast.success(extra.clearYoutube || extra.clearTiktok ? "Clave retirada" : "Claves guardadas");
+        return refresh();
+      })
+      .catch(fail)
+      .finally(() => setPending(false));
+  }
+  return (
+    <form
+      className="card mt-6 grid max-w-2xl gap-3 p-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save({});
+      }}
+    >
+      <h2 className="text-xl">Claves de YouTube y TikTok</h2>
+      <p className="text-sm text-muted">Pega la API key, no un usuario ni una contraseña. No se vuelve a mostrar completa.</p>
+      <label className="field">
+        <span className="label">API key de YouTube</span>
+        <input className="input" autoComplete="off" spellCheck={false} value={youtubeApiKey} onChange={(event) => setYoutube(event.target.value)} placeholder="AIza…" />
+      </label>
+      <label className="field">
+        <span className="label">TikTok client key</span>
+        <input className="input" autoComplete="off" spellCheck={false} value={tiktokClientKey} onChange={(event) => setTiktokKey(event.target.value)} />
+      </label>
+      <label className="field">
+        <span className="label">TikTok client secret</span>
+        <input className="input" autoComplete="off" spellCheck={false} value={tiktokClientSecret} onChange={(event) => setTiktokSecret(event.target.value)} />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn btn-primary" type="submit" disabled={pending}>Guardar claves</button>
+        <button className="btn btn-ghost" type="button" disabled={pending} onClick={() => save({ clearYoutube: true })}>Quitar YouTube</button>
+        <button className="btn btn-ghost" type="button" disabled={pending} onClick={() => save({ clearTiktok: true })}>Quitar TikTok</button>
+      </div>
+    </form>
+  );
+}
+
 export function SettingsPage({ profile }: { profile: Profile }) {
   const refresh = useRefresh();
   const data = useQuery({ queryKey: ["settings"], queryFn: () => getSettings() });
@@ -562,7 +619,7 @@ export function SettingsPage({ profile }: { profile: Profile }) {
   const env = data.data?.env;
   return (
     <Shell profile={profile}>
-      <PageTitle kicker="SISTEMA" title="Ajustes" text="Las claves nunca se escriben aquí ni viajan al navegador. Van en el entorno del servidor al publicar." />
+      <PageTitle kicker="SISTEMA" title="Ajustes" text="Las claves se guardan en el servidor. El panel solo muestra los últimos 4 caracteres." />
       <form
         className="card grid max-w-2xl gap-3 p-5"
         onSubmit={(event) => {
@@ -581,15 +638,16 @@ export function SettingsPage({ profile }: { profile: Profile }) {
         <label className="field"><span className="label">Retiro mínimo USD</span><input className="input" value={minPayout} onChange={(event) => setMin(event.target.value)} /></label>
         <button className="btn btn-primary" type="submit">Guardar</button>
       </form>
+      <KeysForm />
       <section className="mt-6 grid gap-3 md:grid-cols-3">
         <article className="card p-4">
           <h2 className="text-lg">YouTube</h2>
           <p className="mt-2 text-sm text-muted">
             {env?.youtube === "ready"
-              ? "YOUTUBE_API_KEY real. videos.list está listo."
+              ? `API key lista${env.youtubeHint ? ` (${env.youtubeHint})` : ""}. videos.list puede leer vistas.`
               : env?.youtube === "placeholder"
-                ? "Hay un marcador, no una clave de Google. No se simulan vistas ni se llama a la API."
-                : "Falta YOUTUBE_API_KEY. No se simulan vistas."}
+                ? "Hay un marcador, no una API key. No se simulan vistas ni se llama a Google."
+                : "Falta la API key. Pégala abajo. Sin ella no hay vistas de YouTube."}
           </p>
           <p className="mt-2 text-xs text-muted">Cuota usada hoy: {settings?.youtube_quota_day === new Date().toISOString().slice(0, 10) ? settings?.youtube_quota_used : 0}</p>
           <button type="button" className="btn btn-ghost mt-3" onClick={() => void probeYoutube().then((result) => toast.message(result.message)).catch(fail)}>Probar YouTube</button>
@@ -598,18 +656,28 @@ export function SettingsPage({ profile }: { profile: Profile }) {
           <h2 className="text-lg">TikTok</h2>
           <p className="mt-2 text-sm text-muted">
             {env?.tiktok
-              ? "Hay claves de app. Cada clipper autoriza video.list desde su perfil. Sin esa autorización no hay vistas oficiales."
-              : "Sin TIKTOK_CLIENT_KEY y TIKTOK_CLIENT_SECRET. Solo se valida el enlace y, si responde, el oEmbed público. Una cifra leída de la página no se liquida sola."}
+              ? `App lista${env.tiktokHint ? ` (${env.tiktokHint})` : ""}. Cada clipper autoriza video.list desde su perfil. Sin esa autorización no hay vistas oficiales.`
+              : "TikTok no usa una API key suelta. Hacen falta client key y client secret de tu app en developers.tiktok.com."}
           </p>
+          <p className="mt-2 break-all text-xs text-muted">Redirect obligatorio: {env?.productionRedirect}</p>
+          <button type="button" className="btn btn-ghost mt-3" onClick={() => void probeTikTok().then((result) => toast.message(result.message)).catch(fail)}>Probar TikTok</button>
         </article>
         <article className="card p-4"><h2 className="text-lg">Base y cron</h2><p className="mt-2 text-sm text-muted">{env?.database}. Cron: {env?.cron ? "CRON_SECRET presente" : "sin CRON_SECRET, POST /api/cron/sync responde 503"}.</p></article>
       </section>
       <section className="mt-6 space-y-3 text-sm text-muted">
-        <h2 className="text-xl text-fg">Cómo configurar las APIs</h2>
-        <p>YouTube: crea un proyecto en Google Cloud, activa YouTube Data API v3 y genera una API key. Sustituye el marcador por esa clave en el servidor (YOUTUBE_API_KEY) y pulsa Probar YouTube. Cada videos.list cuesta 1 unidad. CLIPRD se detiene cerca de 9,500 unidades diarias.</p>
-        <p>TikTok: crea una app en developers.tiktok.com con Login Kit y el permiso video.list. Define TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET y, si el dominio público es fijo, TIKTOK_REDIRECT_URI apuntando a /api/tiktok/callback. Cada clipper conecta su cuenta. Hasta entonces las cifras de la página pública no se pagan.</p>
-        <p>Sincronización: un programador puede llamar POST /api/cron/sync con Authorization Bearer y CRON_SECRET. Sin ese secreto el endpoint no corre.</p>
-        <p>La moneda operativa es USD. La seguridad de cada fila está en el servidor: un clipper solo recibe sus clips, su cuenta y sus pagos. No hay claves en el navegador.</p>
+        <h2 className="text-xl text-fg">Crear la API key de YouTube</h2>
+        <p>1. Entra a console.cloud.google.com con la cuenta de la agencia y crea un proyecto, por ejemplo CLIPRD.</p>
+        <p>2. Activa <strong className="text-fg">YouTube Data API v3</strong>. No actives OAuth ni crees un “ID de cliente”.</p>
+        <p>3. APIs y servicios → Credenciales → Crear credenciales → <strong className="text-fg">Clave de API</strong>. Eso no pide contraseña ni secreto de cliente.</p>
+        <p>4. En la clave, restricción de API: solo YouTube Data API v3. Restricción de aplicación: ninguna. Si la limitas por sitio web, el servidor de clip-rd.vercel.app no podrá usarla.</p>
+        <p>5. Pega esa clave aquí y pulsa Probar YouTube. Cada videos.list cuesta 1 unidad. CLIPRD se detiene cerca de 9,500 al día.</p>
+        <h2 className="text-xl text-fg">Crear la app de TikTok</h2>
+        <p>TikTok no da una clave como YouTube. La vista oficial sale de video.list, y eso exige que cada cuenta autorice la app.</p>
+        <p>1. Entra a developers.tiktok.com con la cuenta de la agencia y crea una app.</p>
+        <p>2. Agrega Login Kit. Activa los permisos user.info.basic y video.list. No basta con el oEmbed público: eso no se paga.</p>
+        <p>3. En Redirect URI pega exactamente {env?.productionRedirect}. Si estás probando en otro dominio, también registra el que muestra esta pantalla al conectar.</p>
+        <p>4. Copia Client key y Client secret, pégalos juntos aquí y pulsa Probar TikTok. Si la app sigue en sandbox, añade como usuario de prueba cada cuenta de TikTok que vaya a conectar.</p>
+        <p>5. El clipper entra a Perfil y pulsa Conectar TikTok. Hasta ese momento CLIPRD puede leer el enlace, pero no liquida esas vistas.</p>
       </section>
       <section className="mt-8">
         <h2 className="text-xl">Auditoría</h2>
