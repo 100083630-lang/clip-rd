@@ -8,7 +8,7 @@ import { INITIAL_RATES, WORKED_EXAMPLE, earningAmount, sumAmounts } from "@/lib/
 import { bootstrapProfile, getPublicHome } from "@/server/cliprd";
 import { Authed, Shell } from "./chrome";
 import { Logo } from "./logo";
-
+import EvidenceGallery from "@/components/EvidenceGallery";
 const PROOF = WORKED_EXAMPLE.map((row) => ({ ...row, amount: earningAmount(row.views, row.rate) }));
 
 export function HomePage() {
@@ -85,6 +85,7 @@ export function HomePage() {
             </article>
           ))}
         </section>
+        <EvidenceGallery />
         <footer className="mt-12 flex flex-wrap gap-4 text-sm text-muted">
           <Link to="/politicas" className="underline-offset-4 hover:underline">Condiciones y antifraude</Link>
           <span>Acumular vistas no garantiza un pago.</span>
