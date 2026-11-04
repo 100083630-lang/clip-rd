@@ -10,7 +10,34 @@ import { bootstrapProfile, getPublicHome } from "@/server/cliprd";
 import { Authed, Shell } from "./chrome";
 import { Logo } from "./logo";
 import EvidenceGallery from "@/components/EvidenceGallery";
+
 const PROOF = WORKED_EXAMPLE.map((row) => ({ ...row, amount: earningAmount(row.views, row.rate) }));
+
+const INVITE_STORAGE_KEY = "cliprd:inviteCode";
+
+function readInviteCodeFromStorage(): string {
+  try {
+    return sessionStorage.getItem(INVITE_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeInviteCodeToStorage(code: string) {
+  try {
+    sessionStorage.setItem(INVITE_STORAGE_KEY, code);
+  } catch {
+    // sessionStorage no disponible; ignora
+  }
+}
+
+function clearInviteCodeStorage() {
+  try {
+    sessionStorage.removeItem(INVITE_STORAGE_KEY);
+  } catch {
+    // ignora
+  }
+}
 
 export function HomePage() {
   const home = useQuery({ queryKey: ["home"], queryFn: () => getPublicHome() });
@@ -179,43 +206,119 @@ export function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+
   if (!isPending && user && profile.data) {
     return <Navigate to={profile.data.role === "admin" ? "/admin" : "/clipper/dashboard"} />;
   }
+
+  async function handleRegister(event: React.FormEvent) {
+    event.preventDefault();
+    if (pending) return;
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
+    const cleanInvite = inviteCode.trim().toUpperCase();
+
+    if (!cleanEmail || password.length < 8 || cleanName.length < 2) {
+      setError("Revisa los campos: nombre (2+), correo válido y contraseña de 8+ caracteres.");
+      return;
+    }
+    if (!cleanInvite) {
+      setError("El código de invitación es obligatorio.");
+      return;
+    }
+
+    setPending(true);
+    setError("");
+
+    try {
+      // ⚠️ ÚNICO método permitido: signUp. NUNCA signIn.
+      console.info("[register] calling authClient.signUp.email", { email: cleanEmail });
+      const { error: signError } = await authClient.signUp.email({
+        email: cleanEmail,
+        password,
+        name: cleanName,
+        fetchOptions: { headers: { "Content-Type": "application/json" } },
+      });
+
+      if (signError) {
+        const rawMsg = String(signError.message ?? "");
+        const rawCode = String((signError as { code?: string }).code ?? "");
+        const haystack = (rawMsg + " " + rawCode).toLowerCase();
+
+        if (
+          haystack.includes("already") ||
+          haystack.includes("exist") ||
+          haystack.includes("duplicate") ||
+          haystack.includes("unique") ||
+          haystack.includes("user_exists")
+        ) {
+          setError("Ya tienes cuenta con este correo, dale a Entrar.");
+        } else {
+          setError(rawMsg || "No se pudo crear la cuenta.");
+        }
+        setPending(false);
+        return;
+      }
+
+      // Guardar invite code para el paso de Onboarding (por si la reactividad falla)
+      writeInviteCodeToStorage(cleanInvite);
+
+      // Forzar recarga para garantizar que useCurrentUserState vea la nueva sesión.
+      // Si la sesión se creó, el componente re-renderiza y muestra Onboarding.
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo crear la cuenta.");
+      setPending(false);
+    }
+  }
+
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
       <div className="card w-full max-w-md p-6 md:p-8">
         <Logo slogan />
         {isPending || (user && profile.isLoading) ? <p className="mt-8 text-sm text-muted">Cargando…</p> : null}
         {!isPending && !user ? (
-          <form
-            className="mt-8 space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setPending(true);
-              setError("");
-              void authClient.signUp
-                .email({ email, password, name, fetchOptions: { headers: { "Content-Type": "application/json" } } })
-                .then(({ error: signError }) => {
-                  if (signError) throw new Error(signError.message ?? "No se pudo crear la cuenta.");
-                  void navigate({ to: "/register" });
-                })
-                .catch((reason: unknown) => {
-                  setError(reason instanceof Error ? reason.message : "No se pudo crear la cuenta.");
-                  setPending(false);
-                });
-            }}
-          >
+          <form className="mt-8 space-y-4" onSubmit={handleRegister}>
             <h1 className="text-3xl">Crear cuenta</h1>
-            <p className="text-sm text-muted">El correo y la contraseña se guardan en la base de CLIPRD. La contraseña queda cifrada con bcrypt.</p>
-            <label className="field"><span className="label">Nombre</span><input className="input" required minLength={2} value={name} onChange={(event) => setName(event.target.value)} /></label>
-            <label className="field"><span className="label">Correo</span><input className="input" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            <label className="field"><span className="label">Contraseña</span><input className="input" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+            <p className="text-sm text-muted">
+              El correo y la contraseña se guardan en la base de CLIPRD. La contraseña queda cifrada con bcrypt.
+            </p>
+            <label className="field">
+              <span className="label">Nombre</span>
+              <input className="input" required minLength={2} value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label className="field">
+              <span className="label">Correo</span>
+              <input className="input" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <label className="field">
+              <span className="label">Contraseña</span>
+              <input className="input" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            </label>
+            <label className="field">
+              <span className="label">Código de invitación</span>
+              <input
+                className="input"
+                required
+                value={inviteCode}
+                onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+                placeholder="CLIP-XXXXXX"
+                autoComplete="off"
+              />
+            </label>
             {error ? <p className="text-sm text-danger">{error}</p> : null}
-            <button className="btn btn-primary w-full" disabled={pending}>{pending ? "Creando…" : "Crear cuenta"}</button>
-            <p className="text-sm text-muted">¿Ya tienes cuenta? <Link to="/login" className="text-neon underline-offset-4 hover:underline">Entrar</Link></p>
+            <button type="submit" className="btn btn-primary w-full" disabled={pending}>
+              {pending ? "Creando…" : "Crear cuenta"}
+            </button>
+            <p className="text-sm text-muted">
+              ¿Ya tienes cuenta? <Link to="/login" className="text-neon underline-offset-4 hover:underline">Entrar</Link>
+            </p>
           </form>
         ) : null}
         {user && profile.data === null && !profile.isLoading ? (
@@ -233,7 +336,7 @@ export function RegisterPage() {
 function Onboarding({ onDone }: { onDone: () => void }) {
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(() => readInviteCodeFromStorage());
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -245,7 +348,10 @@ function Onboarding({ onDone }: { onDone: () => void }) {
         setPending(true);
         setError("");
         void bootstrapProfile({ data: { displayName, phone, inviteCode, acceptTerms } })
-          .then(() => onDone())
+          .then(() => {
+            clearInviteCodeStorage();
+            onDone();
+          })
           .catch((reason: unknown) => {
             setError(reason instanceof Error ? reason.message : "No se pudo crear el perfil");
             setPending(false);
