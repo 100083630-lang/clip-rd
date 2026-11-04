@@ -587,6 +587,7 @@ export const getMyProfile = async ({ context }: { context: { userId: string } })
   };
 
 export const bootstrapProfile = async ({ context, data }: { context: { userId: string }; data: any }) => {
+    if (!context.userId) throw new Error("No hay usuario para crear el perfil.");
     if (!data.acceptTerms) throw new Error("Debes aceptar las condiciones de participación.");
     const sql = await getSql();
     const existing = await profileByUser(sql, context.userId);
@@ -2227,7 +2228,34 @@ export async function finishTikTokOAuth(input: {
   }
 }
 
-const DOOR_EMAIL = "admin@cliprd.local";
+const OPEN_ADMIN_EMAIL = "admin@cliprd.local";
+const DOOR_EMAIL = OPEN_ADMIN_EMAIL;
+
+export async function ensureOpenAdminId(): Promise<string> {
+  const sql = await getSql();
+  const existing = await sql<{ id: string }>`
+    select id from "user"
+    where id = 'cliprd-admin' or email = ${OPEN_ADMIN_EMAIL}
+    limit 1
+  `;
+  let userId = existing[0]?.id ?? "";
+  if (!userId) {
+    const created = await sql<{ id: string }>`
+      insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+      values ('cliprd-admin', 'Administración CLIPRD', ${OPEN_ADMIN_EMAIL}, true, now(), now())
+      returning id
+    `;
+    userId = created[0]?.id ?? "";
+  }
+  if (!userId) throw new Error("No se pudo preparar el administrador.");
+  await sql`
+    insert into profiles (user_id, display_name, role, status, terms_version)
+    values (${userId}, 'Administración CLIPRD', 'admin', 'active', ${TERMS_VERSION})
+    on conflict (user_id) do update
+      set role = 'admin', status = 'active', updated_at = now()
+  `;
+  return userId;
+}
 
 async function ensureDoorAdmin(sql: Sql, userId: string) {
   const existing = await sql<{ user_id: string }>`select user_id from profiles where user_id = ${userId}`;

@@ -12,7 +12,6 @@ import { Logo } from "./logo";
 const PROOF = WORKED_EXAMPLE.map((row) => ({ ...row, amount: earningAmount(row.views, row.rate) }));
 
 export function HomePage() {
-  const { user, isPending } = useCurrentUserState();
   const home = useQuery({ queryKey: ["home"], queryFn: () => getPublicHome() });
   const rates = home.data?.rates?.length
     ? home.data.rates
@@ -27,11 +26,7 @@ export function HomePage() {
       <header className="relative mx-auto flex max-w-6xl flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
         <Logo size="sm" />
         <div className="flex gap-2 sm:shrink-0">
-          {isPending ? <div className="h-11 w-28 rounded-md bg-surface" /> : null}
-          {!isPending && !user ? (
-            <Link to="/login" className="btn btn-primary">Panel de administración</Link>
-          ) : null}
-          {!isPending && user ? <Link to="/dashboard" className="btn btn-primary">Ir al panel</Link> : null}
+          <Link to="/admin" className="btn btn-primary">Panel de administración</Link>
         </div>
       </header>
       <main className="relative mx-auto max-w-6xl px-4 pb-20">
@@ -45,7 +40,7 @@ export function HomePage() {
               Una agencia, dos plataformas, un solo libro. Los clippers registran TikTok y YouTube. La agencia aprueba, liquida solo las vistas nuevas y documenta cada transferencia.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/login" className="btn btn-primary">Entrar al panel</Link>
+              <Link to="/admin" className="btn btn-primary">Entrar al panel</Link>
               <Link to="/politicas" className="btn btn-ghost">Condiciones</Link>
             </div>
           </div>
@@ -99,61 +94,8 @@ export function HomePage() {
   );
 }
 
-function authText(message: string | undefined, fallback: string) {
-  return message || fallback;
-}
-
-const BEARER_KEY = "grok-auth.bearer-token";
-
 export function LoginPage() {
-  const navigate = useNavigate();
-  const { user, isPending } = useCurrentUserState();
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
-  if (!isPending && user) return <Navigate to="/dashboard" />;
-  return (
-    <main className="grid min-h-screen place-items-center px-4 py-10">
-      <div className="card w-full max-w-md p-6 md:p-8">
-        <Logo slogan />
-        <h1 className="mt-8 text-3xl">Administración</h1>
-        <p className="mt-2 text-sm text-muted">
-          Entras directo al panel de CLIPRD. No hay inicio con Google ni contraseña.
-        </p>
-        {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
-        <button
-          className="btn btn-primary mt-6 w-full"
-          type="button"
-          disabled={pending}
-          onClick={() => {
-            setPending(true);
-            setError("");
-            void import("@/server/cliprd")
-              .then((mod) => mod.enterAdmin())
-              .then(async (result) => {
-                if (result.token) {
-                  try {
-                    window.sessionStorage.setItem(BEARER_KEY, result.token);
-                  } catch {
-                    /* cookie session still applies when the browser allows it */
-                  }
-                }
-                await navigate({ to: "/admin" });
-                window.location.assign("/admin");
-              })
-              .catch((reason: unknown) => {
-                setError(authText(reason instanceof Error ? reason.message : undefined, "No se pudo abrir el panel."));
-                setPending(false);
-              });
-          }}
-        >
-          {pending ? "Abriendo panel…" : "Entrar al panel"}
-        </button>
-        <p className="mt-5 text-xs text-muted">
-          Los clippers no crean cuenta aquí. La agencia los administra desde el panel.
-        </p>
-      </div>
-    </main>
-  );
+  return <Navigate to="/admin" />;
 }
 
 export function RegisterPage() {
@@ -174,7 +116,7 @@ export function RegisterPage() {
           <div className="mt-8 space-y-4">
             <h1 className="text-3xl">Solo administración</h1>
             <p className="text-sm text-muted">Las cuentas públicas y el inicio con Google quedaron fuera. Entra al panel.</p>
-            <Link to="/login" className="btn btn-primary w-full">Ir al panel</Link>
+            <Link to="/admin" className="btn btn-primary w-full">Ir al panel</Link>
           </div>
         ) : null}
         {user && profile.data === null && !profile.isLoading ? (

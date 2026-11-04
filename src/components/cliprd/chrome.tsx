@@ -16,8 +16,6 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { signOut } from "@/lib/auth/client";
-import { RedirectToSignIn } from "@/lib/auth/gates";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { ACCOUNT_STATUS, CLIP_STATUS, PAYOUT_STATUS, PLATFORM_LABEL } from "@/lib/cliprd/labels";
 import type { Profile, ReportTable } from "@/lib/cliprd/types";
 import { getMyProfile, getNotifications, markNotificationsRead } from "@/server/cliprd";
@@ -62,14 +60,11 @@ export function Authed({
   role?: "admin" | "clipper";
   children: (profile: Profile) => ReactNode;
 }) {
-  const { user, isPending } = useCurrentUserState();
   const profile = useQuery({
-    queryKey: ["profile", user?.id],
-    enabled: !isPending && Boolean(user),
+    queryKey: ["profile", "open"],
     queryFn: () => getMyProfile(),
   });
-  if (isPending || (user && profile.isLoading)) return <Boot />;
-  if (!user) return <RedirectToSignIn />;
+  if (profile.isPending) return <Boot />;
   if (profile.isError) {
     return (
       <main className="grid min-h-screen place-items-center px-6 text-center">
@@ -77,7 +72,13 @@ export function Authed({
       </main>
     );
   }
-  if (!profile.data) return <Navigate to="/register" />;
+  if (!profile.data) {
+    return (
+      <main className="grid min-h-screen place-items-center px-6 text-center">
+        <p className="max-w-md text-muted">No se pudo abrir el panel.</p>
+      </main>
+    );
+  }
   if (profile.data.status === "suspended" || profile.data.status === "inactive") {
     return <Locked profile={profile.data} />;
   }
