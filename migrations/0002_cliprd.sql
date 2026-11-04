@@ -203,6 +203,9 @@ create table if not exists ranking_prizes (
   unique (scope, place)
 );
 
+alter table clips add column if not exists status text not null default 'pending';
+alter table payout_requests add column if not exists status text not null default 'pending';
+
 create index if not exists clips_user_idx on clips (user_id, status);
 create index if not exists clips_status_idx on clips (status, created_at desc);
 create index if not exists earnings_user_idx on earnings (user_id, created_at desc);
