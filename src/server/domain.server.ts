@@ -2234,23 +2234,33 @@ const DOOR_EMAIL = OPEN_ADMIN_EMAIL;
 
 export async function ensureOpenAdminId(): Promise<string> {
   const sql = await getSql();
-  const existing = await sql<{ id: string }>`
-    select id from "user" where id = ${OPEN_ADMIN_ID} limit 1
-  `;
-  if (!existing[0]) {
-    await sql`
-      insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
-      values (${OPEN_ADMIN_ID}, 'Administración CLIPRD', ${OPEN_ADMIN_EMAIL}, true, now(), now())
-      on conflict (id) do nothing
+  try {
+    const existing = await sql<{ id: string }>`
+      select id::text as id from "user"
+      where id::text = ${OPEN_ADMIN_ID} or email = ${OPEN_ADMIN_EMAIL}
+      limit 1
     `;
+    let userId = existing[0]?.id ?? "";
+    if (!userId) {
+      const created = await sql<{ id: string }>`
+        insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+        values (${OPEN_ADMIN_ID}, 'Administración CLIPRD', ${OPEN_ADMIN_EMAIL}, true, now(), now())
+        on conflict (id) do nothing
+        returning id::text as id
+      `;
+      userId = created[0]?.id ?? OPEN_ADMIN_ID;
+    }
+    await sql`
+      insert into profiles (user_id, display_name, role, status, terms_version)
+      values (${userId}, 'Administración CLIPRD', 'admin', 'active', ${TERMS_VERSION})
+      on conflict (user_id) do update
+        set role = 'admin', status = 'active', updated_at = now()
+    `;
+    return userId;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "error de base de datos";
+    throw new Error(`No se pudo abrir el panel: ${detail}`);
   }
-  await sql`
-    insert into profiles (user_id, display_name, role, status, terms_version)
-    values (${OPEN_ADMIN_ID}, 'Administración CLIPRD', 'admin', 'active', ${TERMS_VERSION})
-    on conflict (user_id) do update
-      set role = 'admin', status = 'active', updated_at = now()
-  `;
-  return OPEN_ADMIN_ID;
 }
 
 async function ensureDoorAdmin(sql: Sql, userId: string) {

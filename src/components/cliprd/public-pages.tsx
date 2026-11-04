@@ -203,7 +203,6 @@ export function DashboardGate() {
     </main>
   );
 }
-}
 
 export function RankingPage() {
   return (
