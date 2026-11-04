@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { formatUsd, formatViews, formatWhen, formatAgo } from "@/lib/cliprd/format";
+import { formatUsd, formatViews, formatWhen } from "@/lib/cliprd/format";
 import { PLATFORM_LABEL, ACCOUNT_STATUS } from "@/lib/cliprd/labels";
 import { WORKED_EXAMPLE, earningAmount, sumAmounts } from "@/lib/cliprd/money";
 import type { Profile, ReportTable } from "@/lib/cliprd/types";
 import {
   addBonus,
   adjustViews,
+  adminAddClip,
   classifyClip,
   createInvite,
   decidePayout,
@@ -34,77 +35,82 @@ import {
 } from "@/server/cliprd";
 import { PerformanceChart, PlatformChart } from "./charts";
 import { PageTitle, PayBadge, Shell, Stat, StatusBadge, downloadText, platformName, toCsv, toExcel, useRefresh } from "./chrome";
-import { ClipGallery, ClipPoster } from "./media";
+import { ClipPoster } from "./media";
 
 function fail(error: unknown) {
   toast.error(error instanceof Error ? error.message : "No se pudo completar");
 }
 
 export function AdminHome({ profile }: { profile: Profile }) {
-  const [platform, setPlatform] = useState("all");
-  const [from, setFrom] = useState("1970-01-01");
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [chart, setChart] = useState<"daily" | "weekly" | "monthly">("daily");
   const data = useQuery({
-    queryKey: ["admin-home", platform, from, to],
-    queryFn: () => getAdminDashboard({ data: { platform: platform as "all", from, to } }),
+    queryKey: ["admin-home"],
+    queryFn: () => getAdminDashboard({ data: { platform: "all", from: "1970-01-01", to: new Date().toISOString().slice(0, 10) } }),
   });
   const recent = useQuery({
     queryKey: ["admin-clips", "", "", "home"],
     queryFn: () => listClips({ data: { status: "", platform: "", q: "", offset: 0 } }),
   });
-  const config = useQuery({ queryKey: ["settings"], queryFn: () => getSettings() });
   const cards = data.data?.cards;
   const series = chart === "daily" ? data.data?.daily : chart === "weekly" ? data.data?.weekly : data.data?.monthly;
   return (
     <Shell profile={profile}>
-      <h2 className="mb-1 text-3xl">Clips recientes</h2>
-      <p className="mb-4 text-sm text-muted">Miniatura, vistas y dinero de cada publicación real. No hay puntaje inventado.</p>
-      <section className="mb-8">
-        <ClipGallery clips={(recent.data ?? []).slice(0, 6)} />
-      </section>
-      <div className="mb-4 flex flex-wrap gap-2">
-        <select className="select max-w-48" value={platform} onChange={(event) => setPlatform(event.target.value)}>
-          <option value="all">Todas</option>
-          <option value="tiktok">TikTok</option>
-          <option value="youtube_shorts">Shorts</option>
-          <option value="youtube_video">Videos</option>
-        </select>
-        <input className="input max-w-40" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-        <input className="input max-w-40" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-      </div>
+      <PageTitle kicker="CLIPRD" title="Panel" text="Lo que hay en el libro. Si un número es cero, todavía no hay movimientos." />
+      {data.isPending ? <p className="mb-4 text-sm text-muted">Cargando el panel…</p> : null}
+      {data.isError ? <p className="mb-4 text-sm text-danger">{data.error instanceof Error ? data.error.message : "No se pudo cargar el panel."}</p> : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Clippers" value={String(cards?.clippers ?? 0)} hint={`${cards?.activeClippers ?? 0} activos`} />
         <Stat label="Publicaciones" value={String(cards?.posts ?? 0)} hint={`${cards?.pendingPosts ?? 0} por revisar`} />
-        <Stat label="Vistas del periodo" value={formatViews(cards?.views ?? 0)} hint="Solo deltas liquidados" />
+        <Stat label="Vistas" value={formatViews(cards?.views ?? 0)} hint="Deltas liquidados del periodo" />
         <Stat label="Ganancias" value={formatUsd(cards?.earned ?? "0")} />
-        <Stat label="TikTok" value={formatViews(cards?.tiktokViews ?? 0)} hint="Vistas de clips aprobados" />
-        <Stat label="Shorts" value={formatViews(cards?.shortsViews ?? 0)} hint={config.data?.env.youtube === "ready" ? "API de YouTube conectada" : "YouTube sin clave en este servidor"} />
-        <Stat label="Videos" value={formatViews(cards?.videoViews ?? 0)} hint={config.data?.env.youtube === "ready" ? "API de YouTube conectada" : "YouTube sin clave en este servidor"} />
-        <Stat label="Pagos hechos" value={formatUsd(cards?.paid ?? "0")} />
-        <Stat label="Pagos abiertos" value={formatUsd(cards?.pendingPay ?? "0")} />
-        <Stat label="Por liquidar" value={formatUsd(cards?.outstanding ?? "0")} hint="Ganado menos pagado en el periodo" />
       </div>
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
         <section className="card p-4">
-          <div className="mb-3 flex gap-2">
-            {(["daily", "weekly", "monthly"] as const).map((item) => (
-              <button key={item} type="button" className={`btn ${chart === item ? "btn-primary" : "btn-ghost"}`} onClick={() => setChart(item)}>
-                {item === "daily" ? "Diario" : item === "weekly" ? "Semanal" : "Mensual"}
-              </button>
-            ))}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-xl">Vistas y dinero</h2>
+            <div className="flex gap-2">
+              {(["daily", "weekly", "monthly"] as const).map((item) => (
+                <button key={item} type="button" className={`btn ${chart === item ? "btn-primary" : "btn-ghost"}`} onClick={() => setChart(item)}>
+                  {item === "daily" ? "30 días" : item === "weekly" ? "Semanas" : "Meses"}
+                </button>
+              ))}
+            </div>
           </div>
           <PerformanceChart data={series ?? []} mode="money" />
         </section>
         <section className="card p-4">
-          <h2 className="mb-2 text-xl">Ganancias por plataforma</h2>
-          <PlatformChart data={data.data?.platforms ?? []} />
-        </section>
-        <section className="card p-4 lg:col-span-2">
-          <h2 className="mb-2 text-xl">Reproducciones por plataforma</h2>
-          <p className="mb-2 text-xs text-muted">Stock de vistas válidas en clips aprobados. No es una suma repetida del historial.</p>
+          <h2 className="mb-2 text-xl">Por plataforma</h2>
           <PlatformChart data={data.data?.platforms ?? []} metric="views" />
         </section>
+      </div>
+      <h2 className="mb-3 mt-8 text-2xl">Clips recientes</h2>
+      {(recent.data ?? []).length === 0 ? <p className="text-sm text-muted">Todavía no hay clips.</p> : null}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead className="text-xs uppercase tracking-wide text-muted">
+            <tr>
+              <th className="py-2 pr-3">Clip</th>
+              <th className="py-2 pr-3">Plataforma</th>
+              <th className="py-2 pr-3">Vistas</th>
+              <th className="py-2">Ganancia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(recent.data ?? []).slice(0, 8).map((clip) => (
+              <tr key={clip.id} className="border-t border-border">
+                <td className="py-3 pr-3">
+                  <div className="flex items-center gap-3">
+                    {clip.thumbnailUrl ? <img src={clip.thumbnailUrl} alt="" className="h-12 w-20 rounded-lg object-cover" /> : <span className="grid h-12 w-20 place-items-center rounded-lg bg-surface-2 text-xs text-muted">Sin foto</span>}
+                    <span className="font-semibold">{clip.title}</span>
+                  </div>
+                </td>
+                <td className="py-3 pr-3">{platformName(clip.platformId)}</td>
+                <td className="py-3 pr-3">{formatViews(clip.validViews || clip.publicViews)}</td>
+                <td className="py-3 text-neon">{formatUsd(clip.earning)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </Shell>
   );
@@ -145,6 +151,7 @@ export function ClippersPage({ profile }: { profile: Profile }) {
         ))}
       </div>
       <input className="input mb-4 max-w-sm" placeholder="Buscar clipper" value={q} onChange={(event) => setQ(event.target.value)} />
+      {visible.length === 0 ? <p className="text-sm text-muted">Todavía no hay clippers.</p> : null}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {visible.map((clipper) => (
           <article key={clipper.user_id} className={`card p-4 ${clipper.status === "active" ? "glow-active" : ""}`}>
@@ -158,8 +165,8 @@ export function ClippersPage({ profile }: { profile: Profile }) {
                 <p className="mt-1 text-xs font-semibold text-neon">{ACCOUNT_STATUS[clipper.status as keyof typeof ACCOUNT_STATUS] ?? clipper.status}</p>
               </div>
             </div>
-            <p className="mt-3 text-sm text-muted">Este mes: {clipper.month_posts} clips · {formatViews(Number(clipper.month_views))} vistas válidas</p>
-            <p className="text-xs text-muted">Último {formatAgo(clipper.last_at)} · total {formatUsd(clipper.earned)}</p>
+            <p className="mt-3 text-sm text-muted">{clipper.posts} clips · {formatViews(Number(clipper.views))} vistas</p>
+            <p className="text-xs text-muted">Ganancia {formatUsd(clipper.earned)} · este mes {formatViews(Number(clipper.month_views))}</p>
             <div className="mt-3 flex flex-wrap gap-2">
                 <select
                   className="select max-w-44"
@@ -216,25 +223,32 @@ export function ClipsAdminPage({ profile, initialQuery = "" }: { profile: Profil
   const [status, setStatus] = useState("");
   const [platform, setPlatform] = useState("");
   const [q, setQ] = useState(initialQuery);
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState("");
+  const [clipperId, setClipperId] = useState("");
+  const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
   const clips = useQuery({
     queryKey: ["admin-clips", status, platform, q],
     queryFn: () => listClips({ data: { status, platform, q } }),
   });
+  const clippers = useQuery({ queryKey: ["clippers"], queryFn: () => listClippers(), enabled: open });
   return (
     <Shell profile={profile}>
       <PageTitle kicker="REVISIÓN" title="Publicaciones" />
       <div className="mb-4 flex flex-wrap gap-2">
         <input className="input max-w-56" placeholder="Buscar" value={q} onChange={(event) => setQ(event.target.value)} />
-        <select className="select max-w-40" value={status} onChange={(event) => setStatus(event.target.value)}>
+        <select className="select max-w-40" value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Estado">
           <option value="">Estado</option>
           {["pending", "in_review", "verified", "approved", "rejected", "suspended", "settled"].map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <select className="select max-w-48" value={platform} onChange={(event) => setPlatform(event.target.value)}>
+        <select className="select max-w-48" value={platform} onChange={(event) => setPlatform(event.target.value)} aria-label="Plataforma">
           <option value="">Plataforma</option>
           <option value="tiktok">TikTok</option>
           <option value="youtube_shorts">Shorts</option>
           <option value="youtube_video">Videos</option>
         </select>
+        <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>Agregar clip</button>
         <button type="button" className="btn btn-ghost" onClick={() => void syncYoutubeBatch().then((result) => {
           const detail = result.errors.filter(Boolean).join(" ");
           toast.message(
@@ -242,13 +256,53 @@ export function ClipsAdminPage({ profile, initialQuery = "" }: { profile: Profil
               ? `YouTube actualizó ${result.synced} publicaciones. ${detail}`.trim()
               : detail || "La API respondió, pero no hay publicaciones de YouTube registradas para actualizar.",
           );
+          return refresh();
         }).catch(fail)}>
           Sincronizar YouTube
         </button>
-        <button type="button" className="btn btn-ghost" onClick={() => void syncTiktokBatch().then((result) => toast.message(`TikTok: ${result.synced}. ${result.errors.join(" ")}`)).catch(fail)}>
+        <button type="button" className="btn btn-ghost" onClick={() => void syncTiktokBatch().then((result) => {
+          toast.message(`TikTok: ${result.synced}. ${result.errors.join(" ")}`);
+          return refresh();
+        }).catch(fail)}>
           Sincronizar TikTok
         </button>
       </div>
+      {open ? (
+        <form
+          className="card mb-4 grid gap-3 p-4 md:grid-cols-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSaving(true);
+            void adminAddClip({ data: { url, userId: clipperId, title } })
+              .then((result) => {
+                const note = result.warnings[0] ?? "Clip guardado con los datos que devolvió la API.";
+                toast.success(note);
+                setOpen(false);
+                setUrl("");
+                setTitle("");
+                return refresh();
+              })
+              .catch(fail)
+              .finally(() => setSaving(false));
+          }}
+        >
+          <label className="field md:col-span-2"><span className="label">URL del clip</span><input className="input" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://www.youtube.com/shorts/..." /></label>
+          <label className="field"><span className="label">Clipper</span>
+            <select className="select" required value={clipperId} onChange={(event) => setClipperId(event.target.value)}>
+              <option value="">Elige un clipper</option>
+              {(clippers.data ?? []).map((clipper) => <option key={clipper.user_id} value={clipper.user_id}>{clipper.display_name}</option>)}
+            </select>
+          </label>
+          <label className="field"><span className="label">Título</span><input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Opcional. La API lo completa si puede." /></label>
+          <div className="flex gap-2 md:col-span-2">
+            <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Leyendo la API…" : "Guardar"}</button>
+            <button className="btn btn-ghost" type="button" onClick={() => setOpen(false)}>Cancelar</button>
+          </div>
+        </form>
+      ) : null}
+      {clips.isPending ? <p className="text-sm text-muted">Cargando publicaciones…</p> : null}
+      {clips.isError ? <p className="text-sm text-danger">{clips.error instanceof Error ? clips.error.message : "No se pudieron cargar las publicaciones."}</p> : null}
+      {!clips.isPending && !clips.isError && (clips.data ?? []).length === 0 ? <p className="text-sm text-muted">Todavía no hay clips.</p> : null}
       <div className="space-y-3">
         {(clips.data ?? []).map((clip) => (
           <article key={clip.id} className="card overflow-hidden">
@@ -262,7 +316,7 @@ export function ClipsAdminPage({ profile, initialQuery = "" }: { profile: Profil
 }
 
 function ClipReview(props: {
-  clipId: number;
+  clipId: string;
   title: string;
   owner: string;
   status: string;
@@ -308,10 +362,8 @@ function ClipReview(props: {
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" className="btn btn-primary" onClick={() => act("approve")}>Aprobar</button>
-        <button type="button" className="btn btn-ghost" onClick={() => act("review")}>Revisión</button>
-        <button type="button" className="btn btn-ghost" onClick={() => act("verified")}>Verificada</button>
-        <button type="button" className="btn btn-ghost" onClick={() => act("settle")}>Liquidada</button>
         <button type="button" className="btn btn-danger" onClick={() => act("reject")}>Rechazar</button>
+        <button type="button" className="btn btn-ghost" onClick={() => act("settle")}>Pagar</button>
         <button type="button" className="btn btn-danger" onClick={() => act("suspend")}>Suspender</button>
         {props.provider === "youtube" ? (
           <>
@@ -343,7 +395,8 @@ export function PaymentsAdminPage({ profile }: { profile: Profile }) {
   const rows = useQuery({ queryKey: ["payouts"], queryFn: () => listPayouts() });
   return (
     <Shell profile={profile}>
-      <PageTitle kicker="TESORERÍA" title="Pagos" text="Registrar una transferencia no mueve dinero. Documenta el pago que ya hiciste en el banco." />
+      <PageTitle kicker="TESORERÍA" title="Pagos" text="Aprobar una solicitud no mueve dinero. Marcar como pagado documenta la transferencia que ya hiciste." />
+      {(rows.data ?? []).length === 0 ? <p className="mb-4 text-sm text-muted">Todavía no hay solicitudes de pago.</p> : null}
       <div className="space-y-3">
         {(rows.data ?? []).map((row) => (
           <PayoutCard key={row.id} row={row} onDone={refresh} />
@@ -395,10 +448,9 @@ function PayoutCard({
           <input className="input" placeholder="Enlace https del comprobante" value={receiptUrl} onChange={(event) => setReceiptUrl(event.target.value)} />
           <input className="input" placeholder="Motivo si rechazas" value={reason} onChange={(event) => setReason(event.target.value)} />
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn btn-ghost" onClick={() => void decidePayout({ data: { id: row.id, action: "approved" } }).then(() => onDone()).catch(fail)}>Aprobar</button>
-            <button type="button" className="btn btn-ghost" onClick={() => void decidePayout({ data: { id: row.id, action: "processing" } }).then(() => onDone()).catch(fail)}>En proceso</button>
+            <button type="button" className="btn btn-ghost" onClick={() => void decidePayout({ data: { id: row.id, action: "approved" } }).then(() => onDone()).catch(fail)}>Aprobar pago</button>
             <button type="button" className="btn btn-danger" onClick={() => void decidePayout({ data: { id: row.id, action: "rejected", reason } }).then(() => onDone()).catch(fail)}>Rechazar</button>
-            <button type="button" className="btn btn-primary" onClick={() => void recordPayment({ data: { id: row.id, reference, receiptUrl } }).then(() => onDone()).catch(fail)}>Registrar transferencia</button>
+            <button type="button" className="btn btn-primary" onClick={() => void recordPayment({ data: { id: row.id, reference, receiptUrl } }).then(() => onDone()).catch(fail)}>Marcar como pagado</button>
           </div>
         </div>
       ) : null}

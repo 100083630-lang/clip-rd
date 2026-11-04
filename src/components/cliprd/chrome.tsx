@@ -4,7 +4,6 @@ import {
   BadgeDollarSign,
   Bell,
   Clapperboard,
-  FileBarChart,
   LayoutDashboard,
   Menu,
   Plus,
@@ -23,22 +22,15 @@ import { Logo } from "./logo";
 
 const ADMIN_GROUPS = [
   {
-    label: "Operación",
+    label: "Agencia",
     items: [
       { to: "/admin", label: "Panel", icon: LayoutDashboard, exact: true },
       { to: "/admin/clips", label: "Publicaciones", icon: Clapperboard },
       { to: "/admin/clippers", label: "Clippers", icon: Users },
-      { to: "/ranking", label: "Ranking", icon: Trophy },
       { to: "/admin/payments", label: "Pagos", icon: Wallet },
-    ],
-  },
-  {
-    label: "Ajustes",
-    items: [
-      { to: "/admin/rates", label: "Tarifas", icon: BadgeDollarSign },
-      { to: "/admin/reports", label: "Reportes", icon: FileBarChart },
-      { to: "/notifications", label: "Avisos", icon: Bell },
+      { to: "/ranking", label: "Ranking", icon: Trophy },
       { to: "/admin/settings", label: "APIs", icon: Settings },
+      { to: "/admin/rates", label: "Ajustes", icon: BadgeDollarSign },
     ],
   },
 ] as const;

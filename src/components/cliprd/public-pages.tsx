@@ -35,9 +35,9 @@ export function HomePage() {
             <p className="text-xs font-bold tracking-[0.2em] text-neon">AGENCIA ORIGEN SIMPLE</p>
             <h1 className="sr-only">CLIPRD</h1>
             <img src="/brand/cliprd-wordmark.png" alt="" className="mt-6 h-16 w-auto max-w-full md:h-28" />
-            <p className="mt-6 max-w-xl text-2xl font-semibold tracking-tight">Convierte visualizaciones en dinero.</p>
+            <p className="mt-6 max-w-xl text-4xl font-semibold tracking-tight">Gana dinero subiendo clips</p>
             <p className="mt-3 max-w-xl text-sm leading-6 text-muted">
-              Una agencia, dos plataformas, un solo libro. Los clippers registran TikTok y YouTube. La agencia aprueba, liquida solo las vistas nuevas y documenta cada transferencia.
+              {home.data?.slogan ?? "Convierte visualizaciones en dinero."} Una agencia, dos plataformas, un solo libro.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/admin" className="btn btn-primary">Entrar al panel</Link>
@@ -73,17 +73,34 @@ export function HomePage() {
           </div>
           <p className="mt-4 text-lg">Balance del ejemplo: <span className="text-neon">{formatUsd(sumAmounts(PROOF.map((row) => row.amount)))}</span></p>
         </section>
-        <section className="mt-8 grid gap-4 md:grid-cols-3">
+        <section className="mt-8">
+          <h2 className="text-2xl">Cómo funciona</h2>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
           {[
-            ["1. Publicas", "Pegas el enlace. CLIPRD valida TikTok o YouTube, rechaza duplicados y pide aprobación."],
+            ["1. Publicas", "Pegas el enlace. CLIPRD valida TikTok o YouTube y pide aprobación."],
             ["2. Se verifican", "YouTube Data API trae vistas cuando hay clave. Sin clave, no se inventan números."],
-            ["3. Se paga", "El clipper pide un retiro. La agencia registra la transferencia manual del banco."],
+            ["3. Se paga", "El clipper pide un retiro. La agencia registra la transferencia del banco."],
           ].map(([title, text]) => (
             <article key={title} className="card p-5">
               <h3 className="text-xl">{title}</h3>
               <p className="mt-2 text-sm text-muted">{text}</p>
             </article>
           ))}
+          </div>
+        </section>
+        <section className="mt-8">
+          <h2 className="text-2xl">Top clippers</h2>
+          {(home.data?.leaders ?? []).length === 0 ? <p className="mt-3 text-sm text-muted">Todavía no hay clips.</p> : null}
+          <ol className="mt-4 space-y-3">
+            {(home.data?.leaders ?? []).map((leader, index) => (
+              <li key={leader.displayName} className="card flex items-center gap-4 p-4">
+                <span className={`grid size-9 place-items-center rounded-full text-sm font-bold ${index === 0 ? "bg-neon text-bg" : index === 1 ? "bg-white text-bg" : index === 2 ? "bg-warn text-bg" : "bg-surface-2"}`}>{index + 1}</span>
+                <span className="flex-1 font-semibold">{leader.displayName}</span>
+                <span className="text-sm text-muted">{leader.views.toLocaleString("es-DO")} vistas</span>
+                <span className="text-neon">{formatUsd(leader.earnings)}</span>
+              </li>
+            ))}
+          </ol>
         </section>
         <EvidenceGallery />
         <footer className="mt-12 flex flex-wrap gap-4 text-sm text-muted">
@@ -223,7 +240,7 @@ function RankingBody() {
     queryKey: ["rank", platform, period],
     queryFn: () => import("@/server/cliprd").then((mod) => mod.getRanking({ data: { platform, period } })),
   });
-  const rows = query.data?.ranking ?? [];
+  const rows = (query.data?.ranking ?? []).slice(0, 10);
   return (
     <div>
       <div className="mb-6">
@@ -242,11 +259,12 @@ function RankingBody() {
           </button>
         ))}
       </div>
-      {rows.length === 0 ? <p className="text-sm text-muted">Cuando haya clippers activos con movimientos, el ranking se llena solo.</p> : null}
+      {query.isError ? <p className="text-sm text-danger">{query.error instanceof Error ? query.error.message : "No se pudo cargar el ranking."}</p> : null}
+      {rows.length === 0 && !query.isPending ? <p className="text-sm text-muted">Todavía no hay clips.</p> : null}
       <ol className="space-y-3">
         {rows.map((row) => (
           <li key={row.userId} className={`card flex items-center gap-4 p-4 ${row.place <= 3 ? "border-neon/50" : ""}`}>
-            <span className="stat-value w-8 text-2xl text-neon">{row.place}</span>
+            <span className={`grid size-11 place-items-center rounded-full text-sm font-bold ${row.place === 1 ? "bg-neon text-bg" : row.place === 2 ? "bg-white text-bg" : row.place === 3 ? "bg-warn text-bg" : "bg-surface-2"}`}>{row.place}</span>
             <span className="grid size-11 place-items-center rounded-full bg-surface-2 font-bold">
               {row.avatarUrl ? <img src={row.avatarUrl} alt="" className="size-11 rounded-full object-cover" /> : row.displayName.slice(0, 1)}
             </span>

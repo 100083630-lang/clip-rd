@@ -14,7 +14,7 @@ export type Profile = {
 };
 
 export type Clip = {
-  id: number;
+  id: string;
   userId: string;
   ownerName: string;
   provider: "tiktok" | "youtube";

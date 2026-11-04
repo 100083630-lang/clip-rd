@@ -43,7 +43,7 @@ const CLIP_FIELDS = `
 `;
 
 type ClipRow = {
-  id: number;
+  id: string;
   user_id: string;
   owner_name: string;
   provider: "tiktok" | "youtube";
@@ -119,7 +119,7 @@ function withFlag(flags: string[], flag: string): string[] {
 
 function mapClip(row: ClipRow): Clip {
   return {
-    id: Number(row.id),
+    id: String(row.id),
     userId: row.user_id,
     ownerName: row.owner_name,
     provider: row.provider,
@@ -267,7 +267,7 @@ async function activeRate(sql: Sql, platformId: string): Promise<string> {
   return rows[0].amount;
 }
 
-async function writeHistory(sql: Sql, clipId: number, source: string, note: string | null, actorId: string) {
+async function writeHistory(sql: Sql, clipId: string, source: string, note: string | null, actorId: string) {
   await sql`
     insert into clip_statistics (clip_id, public_views, valid_views, likes, comments, shares, source, note, recorded_by)
     select id, public_views, valid_views, likes, comments, shares, ${source}, ${note}, ${actorId}
@@ -276,7 +276,7 @@ async function writeHistory(sql: Sql, clipId: number, source: string, note: stri
 }
 
 async function accrue(sql: Sql, input: {
-  clipId: number;
+  clipId: string;
   newValid: number;
   actorId: string;
   kind: "accrual" | "adjustment";
@@ -487,7 +487,7 @@ async function applyYoutubeItem(sql: Sql, clip: Clip, item: YtItem | undefined, 
   return { ok: true as const, message: canAccrue ? "Estadísticas verificadas y diferencia liquidada." : "Estadísticas públicas actualizadas." };
 }
 
-async function loadClip(sql: Sql, id: number): Promise<Clip | null> {
+async function loadClip(sql: Sql, id: string): Promise<Clip | null> {
   const found = await sql.query<ClipRow>(`select ${CLIP_FIELDS} ${CLIP_FROM} where c.id = $1`, [id]);
   return found[0] ? mapClip(found[0]) : null;
 }
@@ -569,6 +569,15 @@ export const getPublicHome = async () => {
     left join rates r on r.platform_id = p.id and r.active = true
     order by p.id, r.effective_from desc nulls last
   `;
+  const leaders = await sql<{ display_name: string; avatar_url: string | null; views: number; earnings: string }>`
+    select p.display_name, p.avatar_url,
+      coalesce((select sum(c.valid_views) from clips c where c.user_id = p.user_id and c.status in ('approved','settled')), 0)::int as views,
+      coalesce((select sum(e.amount) from earnings e where e.user_id = p.user_id), 0)::text as earnings
+    from profiles p
+    where p.role = 'clipper' and p.status = 'active'
+    order by views desc, earnings desc
+    limit 10
+  `;
   return {
     agencyName: settings[0]?.agency_name ?? "Origen Simple",
     slogan: settings[0]?.slogan ?? "CONVIERTE VISUALIZACIONES EN DINERO.",
@@ -577,6 +586,12 @@ export const getPublicHome = async () => {
       id: rate.id,
       label: rate.label,
       amount: rate.amount ?? "0.0000",
+    })),
+    leaders: leaders.map((row) => ({
+      displayName: row.display_name,
+      avatarUrl: row.avatar_url,
+      views: Number(row.views),
+      earnings: row.earnings,
     })),
   };
 };
@@ -761,10 +776,12 @@ export const getRanking = async ({ context, data }: { context: { userId: string 
 export const registerClip = async ({ context, data }: { context: { userId: string }; data: any }) => {
     const sql = await getSql();
     const profile = await requireProfile(sql, context.userId);
-    if (profile.role !== "clipper") throw new Error("Las publicaciones las registran los clippers.");
-    assertActive(profile);
-    if (!limited(`clip:${context.userId}`, 20, 60 * 60 * 1000)) {
-      throw new Error("Demasiados registros en una hora. Espera un momento.");
+    if (!data.asAdmin) {
+      if (profile.role !== "clipper") throw new Error("Las publicaciones las registran los clippers.");
+      assertActive(profile);
+      if (!limited(`clip:${context.userId}`, 20, 60 * 60 * 1000)) {
+        throw new Error("Demasiados registros en una hora. Espera un momento.");
+      }
     }
     let parsed = parseClipUrl(data.url);
     if (!parsed.ok) throw new Error(parsed.error);
@@ -781,8 +798,8 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
     if (!parsed.ok) throw new Error("No se pudo leer el enlace.");
     let externalId = parsed.provider === "youtube" ? parsed.videoId : parsed.videoId;
     if (!externalId) externalId = `url:${await digest(parsed.normalized)}`;
-    const duplicate = await sql<{ id: number }>`
-      select id from clips where provider = ${parsed.provider} and external_id = ${externalId}
+    const duplicate = await sql<{ id: string }>`
+      select id::text as id from clips where provider = ${parsed.provider} and external_id = ${externalId}
     `;
     if (duplicate[0]) throw new Error("Ese video ya está registrado en CLIPRD.");
 
@@ -891,7 +908,7 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
 
     if (!title) title = "Clip sin título";
     const status = classification === "confirmed" ? "pending" : "in_review";
-    const inserted = await sql<{ id: number }>`
+    const inserted = await sql<{ id: string }>`
       insert into clips (
         user_id, provider, platform_id, declared_platform, classification, external_id, url,
         title, description, channel_name, published_on, duration_seconds, status, availability,
@@ -902,9 +919,9 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
         ${data.publishedOn}, ${duration}, ${status}, ${availability}, ${statsSource}, ${statsVerified},
         ${publicViews}, ${likes}, ${comments}, ${shares}, ${thumbnail}, ${statsError}, now()
       )
-      returning id
+      returning id::text as id
     `;
-    const id = Number(inserted[0]?.id);
+    const id = inserted[0]?.id ?? "";
     await writeHistory(sql, id, statsSource, "Registro inicial", context.userId);
     await audit(sql, context.userId, "clip.register", "clip", String(id), {
       provider: parsed.provider,
@@ -916,6 +933,28 @@ export const registerClip = async ({ context, data }: { context: { userId: strin
     await notify(sql, context.userId, "clip", "Clip registrado", `«${title}» quedó ${status === "pending" ? "pendiente" : "en revisión"}.`, "/clipper/my-clips");
     return { id, warnings, statsVerified, statsSource };
   };
+
+export const adminAddClip = async ({ context, data }: { context: { userId: string }; data: any }) => {
+  const sql = await getSql();
+  await requireAdmin(sql, context.userId);
+  if (!data.userId) throw new Error("Elige un clipper.");
+  const target = await requireProfile(sql, data.userId);
+  if (target.role !== "clipper") throw new Error("Esa cuenta no es un clipper.");
+  const parsed = parseClipUrl(data.url);
+  if (!parsed.ok) throw new Error(parsed.error);
+  const declared = parsed.provider === "tiktok" ? "tiktok" : parsed.shortsPath ? "youtube_shorts" : "youtube_video";
+  return registerClip({
+    context: { userId: data.userId },
+    data: {
+      url: data.url,
+      title: data.title,
+      description: "",
+      publishedOn: new Date().toISOString().slice(0, 10),
+      declared,
+      asAdmin: true,
+    },
+  });
+};
 
 async function resolveFinal(url: string): Promise<string> {
   try {

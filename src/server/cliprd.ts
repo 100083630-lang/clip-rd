@@ -114,6 +114,23 @@ export const registerClip = createServerFn({ method: "POST" })
     return run(...args);
   });
 
+export const adminAddClip = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) =>
+    parse(
+      z.object({
+        url: z.string().trim().min(12).max(500),
+        userId: z.string().uuid(),
+        title: z.string().trim().max(180).optional(),
+      }),
+      input,
+    ),
+  )
+  .handler(async (...args: Parameters<ServerDomain["adminAddClip"]>) => {
+    const { adminAddClip: run } = await import("./domain.server");
+    return run(...args);
+  });
+
 export const getMyClips = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async (...args: Parameters<ServerDomain["getMyClips"]>) => {
@@ -123,7 +140,7 @@ export const getMyClips = createServerFn({ method: "GET" })
 
 export const getClipDetail = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
-  .validator((input: unknown) => parse(z.object({ id: z.number().int().positive() }), input))
+  .validator((input: unknown) => parse(z.object({ id: z.string().uuid() }), input))
   .handler(async (...args: Parameters<ServerDomain["getClipDetail"]>) => {
     const { getClipDetail: run } = await import("./domain.server");
     return run(...args);
@@ -241,7 +258,7 @@ export const reviewClip = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     parse(
       z.object({
-        clipId: z.number().int().positive(),
+        clipId: z.string().uuid(),
         action: z.enum(["approve", "reject", "suspend", "review", "verified", "settle"]),
         validViews: z.number().int().nonnegative().optional(),
         justification: z.string().trim().max(500).optional(),
@@ -260,7 +277,7 @@ export const classifyClip = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     parse(
       z.object({
-        clipId: z.number().int().positive(),
+        clipId: z.string().uuid(),
         platformId: z.enum(["youtube_shorts", "youtube_video"]),
       }),
       input,
@@ -276,7 +293,7 @@ export const adjustViews = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     parse(
       z.object({
-        clipId: z.number().int().positive(),
+        clipId: z.string().uuid(),
         validViews: z.number().int().nonnegative(),
         justification: z.string().trim().min(12, "La justificación debe tener al menos 12 caracteres").max(500),
       }),

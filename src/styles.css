@@ -11,8 +11,8 @@
   --color-border: #292936;
   --color-danger: #ff5d73;
   --color-warn: #f5c16c;
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Syne", "Manrope", ui-sans-serif, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
   --radius-lg: 1rem;
   --radius-md: 0.75rem;
 }
@@ -96,9 +96,11 @@
   }
 
   .card {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: color-mix(in oklab, var(--color-surface) 92%, transparent);
+    border: 1px solid color-mix(in oklab, white 8%, var(--color-border));
+    border-radius: 1.15rem;
+    background: color-mix(in oklab, var(--color-surface) 62%, transparent);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 18px 50px color-mix(in oklab, black 42%, transparent);
   }
 
   .field {

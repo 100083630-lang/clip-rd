@@ -119,7 +119,7 @@ export function RegisterClipPage({ profile }: { profile: Profile }) {
 
 export function MyClipsPage({ profile }: { profile: Profile }) {
   const clips = useQuery({ queryKey: ["my-clips"], queryFn: () => getMyClips() });
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   return (
     <Shell profile={profile}>
       <PageTitle kicker="ARCHIVO" title="Mis publicaciones" />
@@ -161,7 +161,7 @@ function sourceLabel(source: string, verified: boolean) {
   return "Sin verificar";
 }
 
-function ClipFacts({ id }: { id: number }) {
+function ClipFacts({ id }: { id: string }) {
   const detail = useQuery({ queryKey: ["clip", id], queryFn: () => getClipDetail({ data: { id } }) });
   if (!detail.data) return <p className="mt-3 text-sm text-muted">Cargando historial…</p>;
   return (
