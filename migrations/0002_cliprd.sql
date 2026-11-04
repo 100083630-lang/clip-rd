@@ -4,7 +4,7 @@
 -- write is scoped in the server. Do not query these tables from the browser.
 
 create table if not exists profiles (
-  user_id text primary key references "user" ("id") on delete cascade,
+  user_id uuid primary key references "user" ("id") on delete cascade,
   display_name text not null,
   avatar_url text,
   role text not null check (role in ('admin', 'clipper')),
@@ -34,7 +34,7 @@ create table if not exists rates (
 
 create table if not exists clips (
   id serial primary key,
-  user_id text not null references profiles (user_id),
+  user_id uuid not null references profiles (user_id),
   provider text not null check (provider in ('tiktok', 'youtube')),
   platform_id text not null references platforms (id),
   declared_platform text not null,
@@ -89,7 +89,7 @@ create table if not exists clip_statistics (
 create table if not exists earnings (
   id serial primary key,
   clip_id integer references clips (id) on delete restrict,
-  user_id text not null,
+  user_id uuid not null,
   platform_id text,
   views_delta bigint not null default 0,
   rate_per_mille numeric(12, 4) not null default 0,
@@ -103,7 +103,7 @@ create table if not exists earnings (
 
 create table if not exists payout_accounts (
   id serial primary key,
-  user_id text not null unique references profiles (user_id) on delete cascade,
+  user_id uuid not null unique references profiles (user_id) on delete cascade,
   holder_name text not null,
   bank_name text not null,
   account_type text not null check (account_type in ('ahorro', 'corriente')),
@@ -114,7 +114,7 @@ create table if not exists payout_accounts (
 
 create table if not exists payout_requests (
   id serial primary key,
-  user_id text not null references profiles (user_id),
+  user_id uuid not null references profiles (user_id),
   amount numeric(14, 2) not null check (amount > 0),
   currency text not null default 'USD',
   status text not null default 'pending' check (status in (
@@ -130,7 +130,7 @@ create table if not exists payout_requests (
 create table if not exists payments (
   id serial primary key,
   request_id integer not null unique references payout_requests (id),
-  user_id text not null,
+  user_id uuid not null,
   amount numeric(14, 2) not null,
   currency text not null default 'USD',
   method text not null default 'bank_transfer_manual',
@@ -143,7 +143,7 @@ create table if not exists payments (
 
 create table if not exists notifications (
   id serial primary key,
-  user_id text not null,
+  user_id uuid not null,
   kind text not null,
   title text not null,
   body text not null,

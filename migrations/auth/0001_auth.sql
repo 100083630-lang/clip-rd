@@ -17,7 +17,7 @@
 -- server-side (see the `neon` + `auth` skills and src/lib/auth/verify.server.ts).
 
 create table if not exists "user" (
-  "id" text not null primary key,
+  "id" uuid not null primary key,
   "name" text not null,
   "email" text not null unique,
   "emailVerified" boolean not null,
@@ -34,14 +34,14 @@ create table if not exists "session" (
   "updatedAt" timestamptz not null,
   "ipAddress" text,
   "userAgent" text,
-  "userId" text not null references "user" ("id") on delete cascade
+  "userId" uuid not null references "user" ("id") on delete cascade
 );
 
 create table if not exists "account" (
   "id" text not null primary key,
   "accountId" text not null,
   "providerId" text not null,
-  "userId" text not null references "user" ("id") on delete cascade,
+  "userId" uuid not null references "user" ("id") on delete cascade,
   "accessToken" text,
   "refreshToken" text,
   "idToken" text,
