@@ -189,10 +189,20 @@ export function PoliciesPage() {
 
 export function DashboardGate() {
   return (
-    <Authed>
-      {(profile) => <Navigate to={profile.role === "admin" ? "/admin" : "/clipper/dashboard"} />}
-    </Authed>
+    <main style={{ minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", textAlign: "center" }}>
+      <div>
+        <h1 style={{ fontSize: "32px", fontWeight: "800" }}>Panel Próximamente 🚀</h1>
+        <p style={{ marginTop: "12px", opacity: 0.8 }}>
+          Estamos preparando tu panel de clippers.<br />
+          Mientras tanto, únete por WhatsApp para empezar a ganar.
+        </p>
+        <div style={{ marginTop: "20px" }}>
+          <Link to="/" style={{ background: "#22c55e", color: "white", padding: "12px 20px", borderRadius: "10px", fontWeight: "700" }}>Volver al inicio</Link>
+        </div>
+      </div>
+    </main>
   );
+}
 }
 
 export function RankingPage() {
