@@ -59,7 +59,27 @@ function cleanInviteCode(raw: string) {
 }
 
 // ── HOMEPAGE / PÁGINA PÚBLICA PRINCIPAL ────────────────────────────────
+function AuthPausedPage() {
+  return (
+    <main style={{ minHeight: "70vh", display: "grid", placeItems: "center", padding: 24, background: "#080f1e", color: "#e8f0ff" }}>
+      <section style={{ width: "100%", maxWidth: 560, padding: 32, border: "1px solid #243b62", borderRadius: 22, background: "linear-gradient(145deg,#101c35,#0a1224)", textAlign: "center", boxSizing: "border-box" }}>
+        <div style={{ width: 58, height: 58, margin: "0 auto 18px", display: "grid", placeItems: "center", borderRadius: 18, background: "#172b4b", fontSize: 28 }}>🛠️</div>
+        <p style={{ color: "#73b7ff", fontWeight: 800, letterSpacing: 2, margin: "0 0 10px" }}>CLIPRD</p>
+        <h1 style={{ fontSize: 30, margin: "0 0 12px" }}>Acceso temporalmente pausado</h1>
+        <p style={{ color: "#a9bad4", lineHeight: 1.7, margin: 0 }}>Estamos realizando ajustes en el sistema de acceso y registro para ofrecerte una experiencia más estable y segura.</p>
+        <p style={{ color: "#8196b6", fontSize: 13, marginTop: 22 }}>El acceso volverá a estar disponible cuando terminemos las mejoras. Tus datos y tu cuenta no se han eliminado.</p>
+      </section>
+    </main>
+  );
+}
+
 export function HomePage() {
+  return <AuthPausedPage />;
+}
+
+/* PAUSADO TEMPORALMENTE: flujo público de autenticación.
+   Se conserva el código anterior para poder reactivarlo tras corregir el proveedor. */
+function HomePageLegacy() {
   const { user, isPending } = useCurrentUserState();
   const navigate = useNavigate();
 
@@ -90,6 +110,10 @@ export const PublicHomePage = HomePage;
 
 // ── LOGIN ───────────────────────────────────────────────────────────────
 export function LoginPage() {
+  return <AuthPausedPage />;
+}
+
+function LoginPageLegacy() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -159,6 +183,10 @@ export function LoginPage() {
 
 // ── REGISTER / TU FICHA ────────────────────────────────────────────────
 export function RegisterPage() {
+  return <AuthPausedPage />;
+}
+
+function RegisterPageLegacy() {
   const [fullName, setFullName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
