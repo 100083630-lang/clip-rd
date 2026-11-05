@@ -150,6 +150,7 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   const { user, isPending } = useCurrentUserState();
   const queryClient = useQueryClient();
@@ -187,7 +188,10 @@ export function RegisterPage() {
         window.location.reload();
       }
     } catch (err: any) {
-      setError(err?.message ?? "No se pudo crear la cuenta.");
+      const message = err?.message ?? "No se pudo crear la cuenta.";
+      setError(/already exists|user exists|email.*taken|already registered|duplicate/i.test(message)
+        ? "Este correo ya tiene una cuenta. Entra desde «¿Ya tienes cuenta? Entrar» y usa tu contraseña."
+        : message);
     } finally {
       setLoading(false);
     }
@@ -199,17 +203,18 @@ export function RegisterPage() {
     try {
       await saveBearerTokenFromSession();
       const cleanInvite = cleanInviteCode(inviteCode);
+      if (!acceptTerms) throw new Error("Debes aceptar las condiciones de participación para continuar.");
       const result = await bootstrapProfile({
         data: {
-          fullName: fullName.trim(),
-          displayName: displayName.trim() || fullName.trim(),
+          displayName: (displayName.trim() || fullName.trim()),
           inviteCode: cleanInvite || undefined,
+          acceptTerms: true,
         },
       });
-      if ((result as any)?.error) throw new Error("No se pudo entrar a CLIPRD.");
+      if (!result || (result as any)?.error) throw new Error("No se pudo completar tu perfil. Intenta de nuevo.");
       clearInviteCodeFromStorage();
-      queryClient.invalidateQueries();
-      navigate({ to: "/cliprd" });
+      await queryClient.invalidateQueries();
+      navigate({ to: result.role === "admin" ? "/admin" : "/clipper/dashboard" });
     } catch (err: any) {
       setError(err?.message ?? "No se pudo entrar. Intenta de nuevo.");
     } finally {
@@ -277,6 +282,10 @@ export function RegisterPage() {
         <label>
           Código de invitación <span style={{ color: "#888" }}>(opcional)</span>
           <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Déjalo en blanco si no tienes" style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4, textTransform: "uppercase" }} />
+        </label>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} style={{ marginTop: 3 }} />
+          Acepto las condiciones de participación y las reglas de CLIPRD.
         </label>
         {error && <div style={{ color: "red" }}>{error}</div>}
         <button onClick={handleEnterCliprd} disabled={loading} style={{ padding: 14, background: "#111", color: "#fff", borderRadius: 10, border: "none" }}>
