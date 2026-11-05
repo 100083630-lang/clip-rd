@@ -92,7 +92,16 @@ export const authConfigured =
 // it derives the origin per-request from the (proxied) host, validated against the
 // preview allowlist, which makes the OAuth `redirect_uri` the concrete preview URL
 // the broker's preview client accepts.
-const explicitBaseURL = env("BETTER_AUTH_URL");
+const rawBetterAuthURL = env("BETTER_AUTH_URL");
+// Better Auth compares Origins, not arbitrary URL strings. Normalize the
+// production URL so a trailing slash or path in Vercel cannot cause
+// sign-up/sign-in POSTs to be rejected as INVALID_ORIGIN.
+const explicitBaseURL = rawBetterAuthURL
+  ? new URL(rawBetterAuthURL).origin
+  : undefined;
+const vercelOrigin = env("VERCEL_URL")
+  ? `https://${env("VERCEL_URL")!.replace(/^https?:\\/\\//, "").replace(/\\/$/, "")}`
+  : undefined;
 // Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
 // requires a mutable `allowedHosts: string[]`.
 const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
@@ -126,6 +135,7 @@ const baseURL = explicitBaseURL ?? {
 // Missing entries here surface as FORBIDDEN "Invalid origin".
 const trustedOrigins: string[] = [
   ...(explicitBaseURL ? [explicitBaseURL] : []),
+  ...(vercelOrigin ? [vercelOrigin] : []),
   ...previewAllowedHosts,
   ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
   ...APP_ORIGINS,
