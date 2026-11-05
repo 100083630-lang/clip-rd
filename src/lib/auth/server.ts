@@ -133,6 +133,16 @@ const trustedOrigins: string[] = [
 
 const databaseUrl = env("DATABASE_URL");
 
+// Vercel/serverless instances must not silently persist auth in an in-memory
+// PGLite database: each cold start would see a different empty database, so a
+// successful sign-up could not be followed by a reliable sign-in. Require the
+// shared Postgres database in production and fail with an actionable message.
+if (process.env.NODE_ENV === "production" && !databaseUrl) {
+  throw new Error(
+    "[auth] DATABASE_URL is required in production. Configure a persistent Postgres/Neon database; PGLite is only a local/preview fallback.",
+  );
+}
+
 const database = databaseUrl
   ? new Pool({ connectionString: databaseUrl })
   : { dialect: pgliteDialect(() => getPglite()), type: "postgres" as const };
