@@ -185,6 +185,11 @@ export function RegisterPage() {
     setIsNewUser(false);
     setEmail(user.primaryEmail ?? "");
     setDisplayName(user.displayName ?? "");
+    void getMyProfile().then((profile) => {
+      if (profile) window.location.href = profile.role === "admin" ? "/admin" : "/clipper/dashboard";
+    }).catch(() => {
+      // A user without a CLIPRD profile must finish the onboarding form below.
+    });
   }, [user, isPending]);
 
   async function handleRegister(e: React.FormEvent) {
