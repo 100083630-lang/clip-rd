@@ -160,17 +160,9 @@ export function LoginPage() {
             .email({ email, password, fetchOptions: { headers: { "Content-Type": "application/json" } } })
             .then(async ({ error: signError }) => {
               if (signError) throw new Error("Correo o contraseña incorrectos.");
-              try {
-                const profile = await import("@/server/cliprd").then((mod) => mod.getMyProfile());
-                if (!profile) {
-                  window.location.href = "/register";
-                  return;
-                }
-                window.location.href = profile.role === "admin" ? "/admin" : "/clipper/dashboard";
-              } catch {
-                window.location.href = "/register";
-                return;
-              }
+              // No preguntar por el perfil aquí. Ir directo a /register y que RegisterPage decida:
+              // si ya tiene perfil -> lo manda a /admin o /clipper, si no -> muestra Tu ficha.
+              window.location.href = "/register";
             })
             .catch((reason: unknown) => {
               setError(reason instanceof Error ? reason.message : "No se pudo entrar.");
@@ -205,6 +197,7 @@ export function RegisterPage() {
   const profile = useQuery({
     queryKey: ["profile", user?.id],
     enabled: !isPending && Boolean(user),
+    retry: false,
     queryFn: () => import("@/server/cliprd").then((mod) => mod.getMyProfile()),
   });
   const [name, setName] = useState("");
@@ -214,9 +207,14 @@ export function RegisterPage() {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
+  // Si ya tiene perfil, mandarlo a su dashboard
   if (!isPending && user && profile.data) {
     return <Navigate to={profile.data.role === "admin" ? "/admin" : "/clipper/dashboard"} />;
   }
+
+  // ARREGLO DEL LOOP: si está logueado y NO tiene perfil (null) O el servidor dio error porque no tiene perfil,
+  // mostrar Tu ficha. Antes solo aceptaba null exacto y por eso se devolvía a Crear cuenta.
+  const showOnboarding = Boolean(user) && !profile.isLoading && (profile.data === null || profile.isError);
 
   async function handleRegister(event: React.FormEvent) {
     event.preventDefault();
@@ -321,7 +319,7 @@ export function RegisterPage() {
             </p>
           </form>
         ) : null}
-        {user && profile.data === null && !profile.isLoading ? (
+        {showOnboarding ? (
           <Onboarding
             onDone={() => {
               window.location.href = "/dashboard";
