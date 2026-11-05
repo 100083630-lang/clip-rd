@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0a0a0f;
-  --color-surface: #15151d;
-  --color-surface-2: #1c1c27;
+  --color-bg: #080b12;
+  --color-surface: #101722;
+  --color-surface-2: #172333;
   --color-fg: #ffffff;
   --color-muted: #9b9bb0;
-  --color-neon: #2eff7d;
-  --color-neon-2: #39ff14;
-  --color-border: #292936;
+  --color-neon: #35e6c2;
+  --color-neon-2: #63f0d2;
+  --color-border: #263548;
   --color-danger: #ff5d73;
   --color-warn: #f5c16c;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -100,10 +100,10 @@
     border-radius: 1.15rem;
     background: color-mix(in oklab, var(--color-surface) 62%, transparent);
     backdrop-filter: blur(18px);
-    box-shadow: 0 18px 50px color-mix(in oklab, black 42%, transparent);
+    box-shadow: 0 18px 50px color-mix(in oklab, black 42%, transparent);\n    transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
   }
 
-  .field {
+  .card:hover { border-color: color-mix(in oklab, var(--color-neon) 24%, var(--color-border)); }\n\n  .field {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
