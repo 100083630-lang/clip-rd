@@ -2,8 +2,20 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { authClient, authEnabled } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { bootstrapProfile } from "@/server/cliprd";
+import { bootstrapProfile, getMyProfile } from "@/server/cliprd";
 import { useQueryClient } from "@tanstack/react-query";
+
+const authPageStyle: React.CSSProperties = { maxWidth: 460, margin: "40px auto", padding: 28, color: "#e8f0ff", background: "linear-gradient(145deg,#101c35,#0a1224)", border: "1px solid #243b62", borderRadius: 20 };
+const fieldStyle: React.CSSProperties = { width: "100%", padding: 13, borderRadius: 10, border: "1px solid #29456f", background: "#0b162b", color: "#f4f7ff", marginTop: 5, boxSizing: "border-box" };
+const googleButtonStyle: React.CSSProperties = { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "14px 18px", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", color: "#111827", fontWeight: 700, cursor: "pointer" };
+function GoogleMark() { return <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.9 6.1-15Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z"/><path fill="#4A90E2" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3Z"/><path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6 29.5 4 24 4A20 20 0 0 0 5.8 15.1l6.8 5.3C14.2 15.6 18.7 12 24 12Z"/></svg>; }
+async function continueWithGoogle(setError: (message: string) => void, setLoading: (value: boolean) => void) {
+  setError(""); setLoading(true);
+  try {
+    const result = await authClient.signIn.social({ provider: "google", callbackURL: "/register", errorCallbackURL: "/login" });
+    if (result?.error) throw new Error(result.error.message ?? "No se pudo iniciar con Google.");
+  } catch (error: any) { setError(error?.message ?? "No se pudo iniciar con Google."); setLoading(false); }
+}
 
 // ── Keys ────────────────────────────────────────────────────────────────
 const JUST_LOGGED_IN_KEY = "cliprd.just-logged-in";
@@ -53,7 +65,7 @@ export function HomePage() {
 
   useEffect(() => {
     if (!isPending && user) {
-      navigate({ to: "/register" });
+      navigate({ to: "/login" });
     }
   }, [user, isPending, navigate]);
 
@@ -86,7 +98,9 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!isPending && user) {
-      window.location.href = "/register";
+      void getMyProfile().then((profile) => {
+        window.location.href = profile?.role === "admin" ? "/admin" : profile ? "/clipper/dashboard" : "/register";
+      }).catch(() => { window.location.href = "/register"; });
     }
   }, [user, isPending]);
 
@@ -105,7 +119,8 @@ export function LoginPage() {
       } catch {}
       // GUARDA EL BEARER TOKEN - SIN ESTO DA Unauthorized
       await saveBearerTokenFromSession();
-      window.location.href = "/register";
+      const profile = await getMyProfile();
+      window.location.href = profile?.role === "admin" ? "/admin" : profile ? "/clipper/dashboard" : "/register";
     } catch (err: any) {
       setError(err?.message ?? "No se pudo entrar. Intenta de nuevo.");
     } finally {
@@ -116,13 +131,15 @@ export function LoginPage() {
   if (isPending) return <div style={{ padding: 24 }}>Cargando...</div>;
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-      <h1>Entrar</h1>
-      <p>Entra con tu correo y contraseña de CLIPRD.</p>
+    <div style={authPageStyle}>
+      <h1 style={{ fontSize: 30, fontWeight: 800 }}>Entrar a CLIPRD</h1>
+      <p style={{ color: "#9fb3d4" }}>Accede a tu espacio de trabajo.</p>
+      <button type="button" onClick={() => void continueWithGoogle(setError, setLoading)} disabled={loading} style={googleButtonStyle}><GoogleMark />Continuar con Google</button>
+      <div style={{ textAlign: "center", color: "#91a5c5", margin: "20px 0" }}>o entra con tu correo</div>
       <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <label>
           Correo
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={fieldStyle} />
         </label>
         <label>
           Contraseña
@@ -150,6 +167,7 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   const { user, isPending } = useCurrentUserState();
   const queryClient = useQueryClient();
@@ -167,6 +185,11 @@ export function RegisterPage() {
     setIsNewUser(false);
     setEmail(user.primaryEmail ?? "");
     setDisplayName(user.displayName ?? "");
+    void getMyProfile().then((profile) => {
+      if (profile) window.location.href = profile.role === "admin" ? "/admin" : "/clipper/dashboard";
+    }).catch(() => {
+      // A user without a CLIPRD profile must finish the onboarding form below.
+    });
   }, [user, isPending]);
 
   async function handleRegister(e: React.FormEvent) {
@@ -187,7 +210,10 @@ export function RegisterPage() {
         window.location.reload();
       }
     } catch (err: any) {
-      setError(err?.message ?? "No se pudo crear la cuenta.");
+      const message = err?.message ?? "No se pudo crear la cuenta.";
+      setError(/already exists|user exists|email.*taken|already registered|duplicate/i.test(message)
+        ? "Este correo ya tiene una cuenta. Entra desde «¿Ya tienes cuenta? Entrar» y usa tu contraseña."
+        : message);
     } finally {
       setLoading(false);
     }
@@ -199,17 +225,18 @@ export function RegisterPage() {
     try {
       await saveBearerTokenFromSession();
       const cleanInvite = cleanInviteCode(inviteCode);
+      if (!acceptTerms) throw new Error("Debes aceptar las condiciones de participación para continuar.");
       const result = await bootstrapProfile({
         data: {
-          fullName: fullName.trim(),
-          displayName: displayName.trim() || fullName.trim(),
+          displayName: (displayName.trim() || fullName.trim()),
           inviteCode: cleanInvite || undefined,
+          acceptTerms: true,
         },
       });
-      if ((result as any)?.error) throw new Error("No se pudo entrar a CLIPRD.");
+      if (!result || (result as any)?.error) throw new Error("No se pudo completar tu perfil. Intenta de nuevo.");
       clearInviteCodeFromStorage();
-      queryClient.invalidateQueries();
-      navigate({ to: "/cliprd" });
+      await queryClient.invalidateQueries();
+      navigate({ to: result.role === "admin" ? "/admin" : "/clipper/dashboard" });
     } catch (err: any) {
       setError(err?.message ?? "No se pudo entrar. Intenta de nuevo.");
     } finally {
@@ -221,9 +248,11 @@ export function RegisterPage() {
 
   if (isNewUser || !user) {
     return (
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-        <h1>Crear cuenta</h1>
-        <p>Crea tu cuenta de CLIPRD con correo y contraseña.</p>
+      <div style={authPageStyle}>
+        <h1 style={{ fontSize: 30, fontWeight: 800 }}>Únete a CLIPRD</h1>
+        <p style={{ color: "#9fb3d4" }}>Crea tu cuenta para comenzar a clippear.</p>
+        <button type="button" onClick={() => void continueWithGoogle(setError, setLoading)} disabled={loading} style={googleButtonStyle}><GoogleMark />Continuar con Google</button>
+        <div style={{ textAlign: "center", color: "#91a5c5", margin: "20px 0" }}>o regístrate con tu correo</div>
         <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <label>
             Nombre completo
@@ -243,7 +272,7 @@ export function RegisterPage() {
           </label>
           <label>
             Código de invitación <span style={{ color: "#888" }}>(opcional)</span>
-            <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Si tienes uno, ponlo aquí" style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4, textTransform: "uppercase" }} />
+            <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Si tienes uno, ponlo aquí" style={{ ...fieldStyle, textTransform: "uppercase" }} />
           </label>
           {error && <div style={{ color: "red" }}>{error}</div>}
           <button type="submit" disabled={loading} style={{ padding: 14, background: "#111", color: "#fff", borderRadius: 10, border: "none" }}>
@@ -277,6 +306,10 @@ export function RegisterPage() {
         <label>
           Código de invitación <span style={{ color: "#888" }}>(opcional)</span>
           <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Déjalo en blanco si no tienes" style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4, textTransform: "uppercase" }} />
+        </label>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} style={{ marginTop: 3 }} />
+          Acepto las condiciones de participación y las reglas de CLIPRD.
         </label>
         {error && <div style={{ color: "red" }}>{error}</div>}
         <button onClick={handleEnterCliprd} disabled={loading} style={{ padding: 14, background: "#111", color: "#fff", borderRadius: 10, border: "none" }}>

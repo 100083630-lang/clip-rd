@@ -26,6 +26,7 @@ const ADMIN_GROUPS = [
     items: [
       { to: "/admin", label: "Panel", icon: LayoutDashboard, exact: true },
       { to: "/admin/clips", label: "Publicaciones", icon: Clapperboard },
+      { to: "/admin/ai-studio", label: "Estudio IA", icon: Clapperboard },
       { to: "/admin/clippers", label: "Clippers", icon: Users },
       { to: "/admin/payments", label: "Pagos", icon: Wallet },
       { to: "/ranking", label: "Ranking", icon: Trophy },
@@ -41,6 +42,7 @@ const CLIPPER_GROUPS = [
     items: [
       { to: "/clipper/dashboard", label: "Panel", icon: LayoutDashboard, exact: true },
       { to: "/clipper/register-clip", label: "Registrar", icon: Plus },
+      { to: "/clipper/ai-studio", label: "Estudio IA", icon: Clapperboard },
       { to: "/clipper/my-clips", label: "Mis clips", icon: Clapperboard },
       { to: "/clipper/earnings", label: "Ganancias", icon: BadgeDollarSign },
       { to: "/ranking", label: "Ranking", icon: Trophy },
