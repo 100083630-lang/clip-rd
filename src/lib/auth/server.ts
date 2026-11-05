@@ -189,6 +189,7 @@ export const auth = betterAuth({
       enabled: true,
       trustedProviders: [
         ...GROK_PROVIDERS.map((p) => p.providerId),
+        "google",
         GATE_PROVIDER_ID,
       ],
       // X's synthetic email is never "verified", so don't gate linking on the
@@ -196,6 +197,18 @@ export const auth = betterAuth({
       requireLocalEmailVerified: false,
     },
   },
+
+  // Direct Google OAuth. Credentials are supplied only by the Vercel server environment.
+  ...(env("GOOGLE_CLIENT_ID") && env("GOOGLE_CLIENT_SECRET")
+    ? {
+        socialProviders: {
+          google: {
+            clientId: env("GOOGLE_CLIENT_ID")!,
+            clientSecret: env("GOOGLE_CLIENT_SECRET")!,
+          },
+        },
+      }
+    : {}),
 
   // Cache the session in the short-lived signed `session_data` cookie so reads
   // (incl. the client's `/get-session`) skip the DB — this shrinks the "loading"
