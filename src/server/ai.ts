@@ -19,7 +19,7 @@ export const generateClipIdeas = createServerFn({ method: "POST" })
     const prompt = [
       "Eres el estratega editorial de CLIPRD, una agencia de clips cortos en español para público latino.",
       "Genera exactamente 3 propuestas accionables a partir del tema dado. No inventes citas, sucesos ni marcas de tiempo de un video que no has visto.",
-      "Devuelve JSON válido con esta forma: {"ideas":[{"hook":"...","title":"...","angle":"...","caption":"...","hashtags":["#..."],"editingTips":["..."],"whyItMayWork":"..."}]}",
+      'Devuelve JSON válido con esta forma: {"ideas":[{"hook":"...","title":"...","angle":"...","caption":"...","hashtags":["#..."],"editingTips":["..."],"whyItMayWork":"..."}]}',
       "Los ganchos deben captar atención en los primeros 2 segundos, sin engaño ni clickbait falso. Títulos claros, breves y naturales.",
       "Incluye recomendaciones de edición vertical, subtítulos legibles y contexto suficiente. No prometas viralidad ni resultados garantizados.",
       `Plataforma: ${data.platform}. Tono: ${data.tone}. Audiencia: ${data.audience || "público latino general"}. Tema/contexto: ${data.topic}`,
