@@ -14,6 +14,7 @@ import EvidenceGallery from "@/components/EvidenceGallery";
 const PROOF = WORKED_EXAMPLE.map((row) => ({ ...row, amount: earningAmount(row.views, row.rate) }));
 
 const INVITE_STORAGE_KEY = "cliprd:inviteCode";
+const JUST_LOGGED_IN_KEY = "cliprd:justLoggedIn";
 
 function readInviteCodeFromStorage(): string {
   try {
@@ -34,6 +35,22 @@ function writeInviteCodeToStorage(code: string) {
 function clearInviteCodeStorage() {
   try {
     sessionStorage.removeItem(INVITE_STORAGE_KEY);
+  } catch {
+    // ignora
+  }
+}
+
+function readJustLoggedIn(): boolean {
+  try {
+    return sessionStorage.getItem(JUST_LOGGED_IN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function clearJustLoggedIn() {
+  try {
+    sessionStorage.removeItem(JUST_LOGGED_IN_KEY);
   } catch {
     // ignora
   }
@@ -160,8 +177,11 @@ export function LoginPage() {
             .email({ email, password, fetchOptions: { headers: { "Content-Type": "application/json" } } })
             .then(async ({ error: signError }) => {
               if (signError) throw new Error("Correo o contraseña incorrectos.");
-              // No preguntar por el perfil aquí. Ir directo a /register y que RegisterPage decida:
-              // si ya tiene perfil -> lo manda a /admin o /clipper, si no -> muestra Tu ficha.
+              try {
+                sessionStorage.setItem(JUST_LOGGED_IN_KEY, "1");
+              } catch {
+                // ignora
+              }
               window.location.href = "/register";
             })
             .catch((reason: unknown) => {
@@ -214,7 +234,10 @@ export function RegisterPage() {
 
   // ARREGLO DEL LOOP: si está logueado y NO tiene perfil (null) O el servidor dio error porque no tiene perfil,
   // mostrar Tu ficha. Antes solo aceptaba null exacto y por eso se devolvía a Crear cuenta.
-  const showOnboarding = Boolean(user) && !profile.isLoading && (profile.data === null || profile.isError);
+  // NUEVO: si acaba de entrar (marca de LoginPage), mostrar Tu ficha aunque user todavía salga null por un segundo.
+  const justLoggedIn = readJustLoggedIn();
+  const showOnboarding = (!profile.isLoading && (profile.data === null || profile.isError) && Boolean(user)) || justLoggedIn;
+  const showRegisterForm = !isPending && !user && !justLoggedIn;
 
   async function handleRegister(event: React.FormEvent) {
     event.preventDefault();
@@ -281,7 +304,7 @@ export function RegisterPage() {
       <div className="card w-full max-w-md p-6 md:p-8">
         <Logo slogan />
         {isPending || (user && profile.isLoading) ? <p className="mt-8 text-sm text-muted">Cargando…</p> : null}
-        {!isPending && !user ? (
+        {showRegisterForm ? (
           <form className="mt-8 space-y-4" onSubmit={handleRegister}>
             <h1 className="text-3xl">Crear cuenta</h1>
             <p className="text-sm text-muted">
@@ -322,6 +345,7 @@ export function RegisterPage() {
         {showOnboarding ? (
           <Onboarding
             onDone={() => {
+              clearJustLoggedIn();
               window.location.href = "/dashboard";
             }}
           />
