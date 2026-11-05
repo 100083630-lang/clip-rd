@@ -99,7 +99,7 @@ export function LoginPage() {
         email: email.trim(),
         password,
       });
-      if (signError) throw new Error("Correo o contraseña incorrectos.");
+      if (signError) throw new Error(signError.message ?? "No se pudo iniciar sesión.");
       try {
         sessionStorage.setItem(JUST_LOGGED_IN_KEY, "1");
       } catch {}
