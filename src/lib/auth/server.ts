@@ -99,8 +99,13 @@ const rawBetterAuthURL = env("BETTER_AUTH_URL");
 const explicitBaseURL = rawBetterAuthURL
   ? new URL(rawBetterAuthURL).origin
   : undefined;
-const vercelOrigin = env("VERCEL_URL")
-  ? `https://${env("VERCEL_URL")!.replace(/^https?:\\/\\//, "").replace(/\\/$/, "")}`
+const rawVercelURL = env("VERCEL_URL");
+const normalizedVercelHost = rawVercelURL
+  ?.replace("https://", "")
+  .replace("http://", "")
+  .replace(/\/$/, "");
+const vercelOrigin = normalizedVercelHost
+  ? `https://${normalizedVercelHost}`
   : undefined;
 // Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
 // requires a mutable `allowedHosts: string[]`.
