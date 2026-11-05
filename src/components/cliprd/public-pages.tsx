@@ -163,12 +163,12 @@ export function LoginPage() {
               try {
                 const profile = await import("@/server/cliprd").then((mod) => mod.getMyProfile());
                 if (!profile) {
-                  void navigate({ to: "/register" });
+                  window.location.href = "/register";
                   return;
                 }
-                void navigate({ to: profile.role === "admin" ? "/admin" : "/clipper/dashboard" });
+                window.location.href = profile.role === "admin" ? "/admin" : "/clipper/dashboard";
               } catch {
-                void navigate({ to: "/register" });
+                window.location.href = "/register";
                 return;
               }
             })
@@ -239,7 +239,6 @@ export function RegisterPage() {
     setError("");
 
     try {
-      // ⚠️ ÚNICO método permitido: signUp. NUNCA signIn.
       console.info("[register] calling authClient.signUp.email", { email: cleanEmail });
       const { error: signError } = await authClient.signUp.email({
         email: cleanEmail,
@@ -268,11 +267,8 @@ export function RegisterPage() {
         return;
       }
 
-      // Guardar invite code para el paso de Onboarding (por si la reactividad falla)
       writeInviteCodeToStorage(cleanInvite);
 
-      // Forzar recarga para garantizar que useCurrentUserState vea la nueva sesión.
-      // Si la sesión se creó, el componente re-renderiza y muestra Onboarding.
       if (typeof window !== "undefined") {
         window.location.reload();
       }
@@ -328,7 +324,7 @@ export function RegisterPage() {
         {user && profile.data === null && !profile.isLoading ? (
           <Onboarding
             onDone={() => {
-              void navigate({ to: "/dashboard" });
+              window.location.href = "/dashboard";
             }}
           />
         ) : null}
