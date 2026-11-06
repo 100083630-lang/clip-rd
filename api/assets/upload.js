@@ -1,1 +1,0 @@
-export default async function handler(req,res){return res.status(501).json({error:"La carga de archivos requiere un bucket de Storage y URLs firmadas. Configura Supabase Storage o un proveedor S3 compatible antes de habilitar procesamiento de archivos."})}
