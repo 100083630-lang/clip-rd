@@ -1,338 +1,107 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { authClient, authEnabled } from "@/lib/auth/client";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { bootstrapProfile } from "@/server/cliprd";
-import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 
-// ── Keys ────────────────────────────────────────────────────────────────
-const JUST_LOGGED_IN_KEY = "cliprd.just-logged-in";
-const INVITE_CODE_KEY = "cliprd.invite-code";
-const BEARER_KEY = "grok-auth.bearer-token";
+const features = [
+  { title: "Panel CLIPRD", text: "Una vista clara del sistema y sus módulos principales." },
+  { title: "Clips", text: "Organiza publicaciones, métricas y flujo de trabajo." },
+  { title: "Ranking", text: "Consulta la estructura visual del ranking y la plataforma." },
+];
 
-// ── Helpers ─────────────────────────────────────────────────────────────
-function writeInviteCodeToStorage(code: string) {
-  try {
-    if (code) window.sessionStorage.setItem(INVITE_CODE_KEY, code);
-  } catch {}
-}
-
-function readInviteCodeFromStorage(): string {
-  try {
-    return window.sessionStorage.getItem(INVITE_CODE_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function clearInviteCodeFromStorage() {
-  try {
-    window.sessionStorage.removeItem(INVITE_CODE_KEY);
-  } catch {}
-}
-
-async function saveBearerTokenFromSession() {
-  try {
-    const session = await authClient.getSession();
-    const token =
-      (session as any)?.data?.session?.token ??
-      (session as any)?.session?.token ??
-      null;
-    if (token) window.sessionStorage.setItem(BEARER_KEY, token);
-  } catch {}
-}
-
-function cleanInviteCode(raw: string) {
-  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-}
-
-// ── HOMEPAGE / PÁGINA PÚBLICA PRINCIPAL ────────────────────────────────
-export function HomePage() {
-  const { user, isPending } = useCurrentUserState();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isPending && user) {
-      navigate({ to: "/register" });
-    }
-  }, [user, isPending, navigate]);
-
-  if (isPending) return <div style={{ padding: 24 }}>Cargando...</div>;
-
+function Layout({ children }: { children: ReactNode }) {
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-      <h1>CLIPRD</h1>
-      <p>Tu ficha de registro para trabajar en CLIPRD.</p>
-      <Link to="/login" style={{ display: "block", textAlign: "center", padding: 14, background: "#111", color: "#fff", borderRadius: 10, textDecoration: "none", marginBottom: 12 }}>
-        Entrar
-      </Link>
-      <Link to="/register" style={{ display: "block", textAlign: "center", padding: 14, border: "1px solid #111", borderRadius: 10, textDecoration: "none", color: "#111" }}>
-        Crear cuenta
-      </Link>
-    </div>
+    <main className="min-h-screen bg-[#07111f] text-white">
+      <header className="border-b border-white/10 bg-[#09182a]/90">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <Link to="/" className="text-xl font-black tracking-tight">CLIP<span className="text-cyan-400">RD</span></Link>
+          <nav className="flex items-center gap-3 text-sm">
+            <Link to="/ranking" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/10 hover:text-white">Ranking</Link>
+            <Link to="/dashboard" className="rounded-lg bg-cyan-400 px-4 py-2 font-bold text-slate-950 hover:bg-cyan-300">Ver plataforma</Link>
+          </nav>
+        </div>
+      </header>
+      {children}
+      <footer className="border-t border-white/10 px-6 py-6 text-center text-sm text-slate-400">CLIPRD · Vista pública de la plataforma</footer>
+    </main>
   );
 }
 
-// Alias para que no falle ningún import viejo
+export function HomePage() {
+  return (
+    <Layout>
+      <section className="mx-auto grid max-w-6xl gap-12 px-6 py-20 md:grid-cols-[1.2fr_.8fr] md:items-center">
+        <div>
+          <p className="mb-4 text-sm font-bold tracking-[.22em] text-cyan-400">PLATAFORMA CLIPRD</p>
+          <h1 className="max-w-3xl text-5xl font-black leading-tight md:text-7xl">Todo CLIPRD, sin el caos del antiguo acceso.</h1>
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+            Hemos separado la experiencia visual pública del sistema de autenticación para que puedas revisar el producto sin quedarte atrapado en bucles de login, registro o OAuth.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link to="/dashboard" className="rounded-xl bg-cyan-400 px-6 py-3 font-bold text-slate-950">Explorar la plataforma</Link>
+            <Link to="/ranking" className="rounded-xl border border-white/15 px-6 py-3 font-bold text-white hover:bg-white/5">Ver ranking</Link>
+          </div>
+        </div>
+        <div className="rounded-3xl border border-cyan-400/20 bg-gradient-to-br from-cyan-400/10 to-blue-500/5 p-8 shadow-2xl">
+          <div className="text-sm font-semibold text-cyan-300">ESTADO DEL FRONTEND</div>
+          <div className="mt-5 space-y-4">
+            <div className="rounded-2xl bg-white/5 p-4"><b>✓ Acceso público</b><p className="mt-1 text-sm text-slate-400">La navegación básica ya no depende del login.</p></div>
+            <div className="rounded-2xl bg-white/5 p-4"><b>✓ Código simplificado</b><p className="mt-1 text-sm text-slate-400">Sin lógica duplicada de sesión en las páginas públicas.</p></div>
+            <div className="rounded-2xl bg-white/5 p-4"><b>✓ Autenticación aislada</b><p className="mt-1 text-sm text-slate-400">Las funciones sensibles pueden reconstruirse después sin bloquear la vista.</p></div>
+          </div>
+        </div>
+      </section>
+      <section className="mx-auto grid max-w-6xl gap-4 px-6 pb-20 md:grid-cols-3">
+        {features.map((feature) => (
+          <article key={feature.title} className="rounded-2xl border border-white/10 bg-white/[.035] p-6">
+            <h2 className="text-xl font-bold">{feature.title}</h2>
+            <p className="mt-2 text-slate-400">{feature.text}</p>
+          </article>
+        ))}
+      </section>
+    </Layout>
+  );
+}
+
 export const PublicHomePage = HomePage;
 
-// ── LOGIN ───────────────────────────────────────────────────────────────
+export function DashboardGate({ children }: { children?: ReactNode }) {
+  return (
+    <Layout>
+      <section className="mx-auto max-w-6xl px-6 py-16">
+        <p className="text-sm font-bold tracking-[.2em] text-cyan-400">VISTA DE PLATAFORMA</p>
+        <h1 className="mt-3 text-4xl font-black">CLIPRD está listo para revisión.</h1>
+        <p className="mt-4 max-w-2xl text-slate-300">El frontend público fue limpiado para eliminar los bloqueos de autenticación de esta etapa. Las acciones administrativas y datos privados no se exponen aquí.</p>
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
+          {["Interfaz", "Flujo visual", "Arquitectura pública"].map((item) => <div key={item} className="rounded-2xl border border-white/10 bg-white/[.035] p-6"><b>{item}</b><p className="mt-2 text-sm text-slate-400">Disponible para revisión y rediseño.</p></div>)}
+        </div>
+        {children ? <div className="mt-8">{children}</div> : null}
+      </section>
+    </Layout>
+  );
+}
+
 export function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { user, isPending } = useCurrentUserState();
-
-  useEffect(() => {
-    if (!isPending && user) {
-      window.location.href = "/register";
-    }
-  }, [user, isPending]);
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const { error: signError } = await authClient.signIn.email({
-        email: email.trim(),
-        password,
-      });
-      if (signError) throw new Error(signError.message ?? "No se pudo iniciar sesión.");
-      try {
-        sessionStorage.setItem(JUST_LOGGED_IN_KEY, "1");
-      } catch {}
-      // GUARDA EL BEARER TOKEN - SIN ESTO DA Unauthorized
-      await saveBearerTokenFromSession();
-      window.location.href = "/register";
-    } catch (err: any) {
-      setError(err?.message ?? "No se pudo entrar. Intenta de nuevo.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (isPending) return <div style={{ padding: 24 }}>Cargando...</div>;
-
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-      <h1>Entrar</h1>
-      <p>Entra con tu correo y contraseña de CLIPRD.</p>
-      <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <label>
-          Correo
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
-        </label>
-        <label>
-          Contraseña
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
-        </label>
-        {error && <div style={{ color: "red" }}>{error}</div>}
-        <button type="submit" disabled={loading} style={{ padding: 14, background: "#111", color: "#fff", borderRadius: 10, border: "none" }}>
-          {loading ? "Entrando..." : "Entrar"}
-        </button>
-      </form>
-      <p style={{ marginTop: 16 }}>
-        ¿No tienes cuenta? <Link to="/register">Crear cuenta</Link>
-      </p>
-    </div>
+    <Layout>
+      <section className="mx-auto max-w-xl px-6 py-20 text-center">
+        <p className="text-sm font-bold tracking-[.2em] text-cyan-400">ACCESO EN RECONSTRUCCIÓN</p>
+        <h1 className="mt-3 text-4xl font-black">La vista pública está abierta.</h1>
+        <p className="mt-4 text-slate-300">Quitamos el flujo inestable de login de la experiencia pública mientras se reconstruye la autenticación desde cero.</p>
+        <Link to="/dashboard" className="mt-8 inline-flex rounded-xl bg-cyan-400 px-6 py-3 font-bold text-slate-950">Continuar sin iniciar sesión</Link>
+      </section>
+    </Layout>
   );
 }
 
-// ── REGISTER / TU FICHA ────────────────────────────────────────────────
-export function RegisterPage() {
-  const [fullName, setFullName] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [isNewUser, setIsNewUser] = useState(false);
-
-  const { user, isPending } = useCurrentUserState();
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!authEnabled) return;
-    if (isPending) return;
-    if (!user) {
-      setIsNewUser(true);
-      const savedInvite = readInviteCodeFromStorage();
-      if (savedInvite) setInviteCode(savedInvite);
-      return;
-    }
-    setIsNewUser(false);
-    setEmail(user.primaryEmail ?? "");
-    setDisplayName(user.displayName ?? "");
-  }, [user, isPending]);
-
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const cleanInvite = cleanInviteCode(inviteCode);
-      const { error: signError } = await authClient.signUp.email({
-        email: email.trim(),
-        password,
-        name: displayName.trim() || fullName.trim(),
-      });
-      if (signError) throw new Error(signError.message ?? "No se pudo crear la cuenta.");
-      if (cleanInvite) writeInviteCodeToStorage(cleanInvite);
-      await saveBearerTokenFromSession();
-      if (typeof window !== "undefined") {
-        window.location.reload();
-      }
-    } catch (err: any) {
-      setError(err?.message ?? "No se pudo crear la cuenta.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleEnterCliprd() {
-    setError(null);
-    setLoading(true);
-    try {
-      await saveBearerTokenFromSession();
-      const cleanInvite = cleanInviteCode(inviteCode);
-      const result = await bootstrapProfile({
-        data: {
-          fullName: fullName.trim(),
-          displayName: displayName.trim() || fullName.trim(),
-          inviteCode: cleanInvite || undefined,
-        },
-      });
-      if ((result as any)?.error) throw new Error("No se pudo entrar a CLIPRD.");
-      clearInviteCodeFromStorage();
-      queryClient.invalidateQueries();
-      navigate({ to: "/cliprd" });
-    } catch (err: any) {
-      setError(err?.message ?? "No se pudo entrar. Intenta de nuevo.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (isPending) return <div style={{ padding: 24 }}>Cargando...</div>;
-
-  if (isNewUser || !user) {
-    return (
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-        <h1>Crear cuenta</h1>
-        <p>Crea tu cuenta de CLIPRD con correo y contraseña.</p>
-        <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <label>
-            Nombre completo
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} required style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
-          </label>
-          <label>
-            Cómo quieres que te llamen
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
-          </label>
-          <label>
-            Correo
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
-          </label>
-          <label>
-            Contraseña
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
-          </label>
-          <label>
-            Código de invitación <span style={{ color: "#888" }}>(opcional)</span>
-            <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Si tienes uno, ponlo aquí" style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4, textTransform: "uppercase" }} />
-          </label>
-          {error && <div style={{ color: "red" }}>{error}</div>}
-          <button type="submit" disabled={loading} style={{ padding: 14, background: "#111", color: "#fff", borderRadius: 10, border: "none" }}>
-            {loading ? "Creando..." : "Crear cuenta"}
-          </button>
-        </form>
-        <p style={{ marginTop: 16 }}>
-          ¿Ya tienes cuenta? <Link to="/login">Entrar</Link>
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-      <h1>Tu ficha</h1>
-      <p>Completa tu ficha para entrar a CLIPRD.</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <label>
-          Nombre completo
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
-        </label>
-        <label>
-          Cómo quieres que te llamen
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4 }} />
-        </label>
-        <label>
-          Correo
-          <input value={email} disabled style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #eee", background: "#f5f5f5", marginTop: 4 }} />
-        </label>
-        <label>
-          Código de invitación <span style={{ color: "#888" }}>(opcional)</span>
-          <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Déjalo en blanco si no tienes" style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #ccc", marginTop: 4, textTransform: "uppercase" }} />
-        </label>
-        {error && <div style={{ color: "red" }}>{error}</div>}
-        <button onClick={handleEnterCliprd} disabled={loading} style={{ padding: 14, background: "#111", color: "#fff", borderRadius: 10, border: "none" }}>
-          {loading ? "Entrando..." : "Entrar a CLIPRD"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── ESTOS 4 FALTABAN Y POR ESO DABA BUILD FAILED ──────────────────────
-
-export function DashboardGate({ children }: { children?: React.ReactNode }) {
-  const { user, isPending } = useCurrentUserState();
-  if (isPending) return <div style={{ padding: 24 }}>Cargando...</div>;
-  if (!user) {
-    return (
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-        <h1>Debes entrar primero</h1>
-        <Link to="/login">Ir a Entrar</Link>
-      </div>
-    );
-  }
-  return <>{children}</>;
-}
+export function RegisterPage() { return <LoginPage />; }
 
 export function NotificationsPage() {
-  const { user, isPending } = useCurrentUserState();
-  if (isPending) return <div style={{ padding: 24 }}>Cargando...</div>;
-  if (!user) return <div style={{ padding: 24 }}>Debes entrar primero. <Link to="/login">Entrar</Link></div>;
-  return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: 24 }}>
-      <h1>Notificaciones</h1>
-      <p>No tienes notificaciones nuevas.</p>
-    </div>
-  );
+  return <Layout><section className="mx-auto max-w-3xl px-6 py-16"><h1 className="text-4xl font-black">Notificaciones</h1><p className="mt-4 text-slate-300">La vista pública no requiere cuenta. Las notificaciones personales se reactivarán con el nuevo sistema de autenticación.</p></section></Layout>;
 }
 
 export function PoliciesPage() {
-  return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: 24 }}>
-      <h1>Políticas</h1>
-      <p>Políticas de CLIPRD.</p>
-      <p>Al usar CLIPRD aceptas las reglas de la comunidad y el uso responsable de la plataforma.</p>
-    </div>
-  );
+  return <Layout><section className="mx-auto max-w-3xl px-6 py-16"><h1 className="text-4xl font-black">Políticas</h1><p className="mt-4 text-slate-300">CLIPRD está en fase de estabilización. Los datos privados y las funciones financieras permanecen protegidos.</p></section></Layout>;
 }
 
 export function RankingPage() {
-  const { user, isPending } = useCurrentUserState();
-  if (isPending) return <div style={{ padding: 24 }}>Cargando...</div>;
-  if (!user) return <div style={{ padding: 24 }}>Debes entrar primero. <Link to="/login">Entrar</Link></div>;
-  return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: 24 }}>
-      <h1>Ranking</h1>
-      <p>El ranking de CLIPRD aparecerá aquí.</p>
-    </div>
-  );
+  return <Layout><section className="mx-auto max-w-3xl px-6 py-16"><p className="text-sm font-bold tracking-[.2em] text-cyan-400">RANKING</p><h1 className="mt-3 text-4xl font-black">Vista pública del ranking</h1><p className="mt-4 text-slate-300">El ranking completo se conectará nuevamente cuando terminemos la limpieza del backend y los permisos.</p><Link to="/dashboard" className="mt-8 inline-flex rounded-xl border border-white/15 px-5 py-3 font-bold">Volver a la plataforma</Link></section></Layout>;
 }
