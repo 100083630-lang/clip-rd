@@ -1,16 +1,13 @@
 import { createMiddleware } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
 
 /**
- * Sesión propia de CLIPRD. El id sale de la cookie de Better Auth
- * (email + contraseña). Sin sesión, la función responde no autorizado.
+ * BYPASS: autenticación deshabilitada.
+ * Todo request se trata como el admin fijo configurado abajo.
  */
+const BYPASS_ADMIN_ID = "58c0b0aa-43f4-4630-a9da-7c67892caec7";
+
 export const authMiddleware = createMiddleware({ type: "function" }).server(async ({ next }) => {
   const { assertSameSiteRequest } = await import("./isolation.server");
-  const { requireUserId } = await import("./verify.server");
   assertSameSiteRequest();
-  const header = getRequest()?.headers.get("authorization") ?? "";
-  const bearer = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : undefined;
-  const userId = await requireUserId(bearer);
-  return next({ context: { userId } });
+  return next({ context: { userId: BYPASS_ADMIN_ID } });
 });
