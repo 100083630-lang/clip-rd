@@ -13,7 +13,6 @@ import { ensureDbReady, getPglite } from "../db";
 import { pgliteDialect } from "./pglite-dialect";
 import { PREVIEW_ALLOWED_HOSTS } from "./preview";
 
-// Kick (and share) PGLite bootstrap as soon as the auth server module loads.
 void ensureDbReady();
 
 const globalAuthRef = globalThis as typeof globalThis & {
@@ -32,27 +31,22 @@ const env = (key: string): string | undefined => {
 const authDisabled = env("VITE_AUTH_ENABLED") === "false";
 export const authConfigured = !authDisabled;
 
-// ── Base URL (EXPLÍCITA) ─────────────────────────────────────────────────
-// Se usa directamente la variable de entorno. Vercel la inyecta en producción.
-// En desarrollo local, se usa el fallback a localhost.
+// ── Base URL (explícita) ─────────────────────────────────────────────────
 const baseURL =
   env("BETTER_AUTH_URL") ??
   (process.env.NODE_ENV === "production"
-    ? "https://clip-rd.vercel.app" // Fallback de seguridad para producción
+    ? "https://clip-rd.vercel.app"
     : "http://localhost:8080");
 
-// ── Orígenes de confianza ───────────────────────────────────────────────
 const trustedOrigins: string[] = [
   baseURL,
   "https://clip-rd.vercel.app",
   "https://clip-rd-ten.vercel.app",
   "http://localhost:8080",
   "http://127.0.0.1:8080",
-  "http://localhost:3000",
   ...PREVIEW_ALLOWED_HOSTS.map((host) => `https://${host}`),
 ];
 
-// ── Database ──────────────────────────────────────────────────────────────
 const databaseUrl = env("DATABASE_URL");
 if (process.env.NODE_ENV === "production" && !databaseUrl) {
   throw new Error(
@@ -66,9 +60,8 @@ const database = databaseUrl
 
 export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
-// ── Better Auth instance ─────────────────────────────────────────────────
 export const auth = betterAuth({
-  baseURL, // <-- AHORA ES UNA CADENA FIJA
+  baseURL,
   secret: env("BETTER_AUTH_SECRET") ?? previewAuthSecret(),
   database,
 
@@ -77,15 +70,16 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     password: {
-      hash: async (password: string) => {
-        return await hash(password, 10);
-      },
-      verify: async ({ password, hash: stored }: { password: string; hash: string }) => {
-        return await compare(password, stored);
-      },
+      hash: async (password: string) => await hash(password, 10),
+      verify: async ({ password, hash: stored }: { password: string; hash: string }) =>
+        await compare(password, stored),
     },
-    sendResetPassword: async ({ user, url }) => {
-      console.log(`[auth] Enlace de restablecimiento para ${user.email}: ${url}`);
+    // 👇 AQUÍ ESTÁ LA SOLUCIÓN: construir el enlace manualmente con `token`
+    sendResetPassword: async ({ user, token }) => {
+      // Forzamos el dominio de producción (o el que definas en la variable).
+      // Ya NO usamos el `url` que viene por defecto, porque puede contener localhost.
+      const resetLink = `${baseURL}/reset-password?token=${token}`;
+      console.log(`[auth] Enlace de restablecimiento para ${user.email}: ${resetLink}`);
     },
   },
 
@@ -105,10 +99,7 @@ export const auth = betterAuth({
     },
   },
 
-  plugins: [
-    bearer(),
-    tanstackStartCookies(),
-  ],
+  plugins: [bearer(), tanstackStartCookies()],
 });
 
 export function readSessionToken(): string | null {
