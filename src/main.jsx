@@ -1,0 +1,38 @@
+import React,{useMemo,useState} from "react";
+import {createRoot} from "react-dom/client";
+import {Bell,Clapperboard,FolderKanban,Gauge,Library,Menu,Search,Settings,Share2,Sparkles,TrendingUp,Video,Wand2,X,Zap,Scissors,Upload,Plus,Users,Activity,Radio} from "lucide-react";
+import "./styles.css";
+
+const clips=[
+["80 policías me acosaron",92,"01:10","Alta retención","https://images.unsplash.com/photo-1590602847861-f357a9332bbc?auto=format&fit=crop&w=900&q=80"],
+["No vendas tu sueño aún",94,"01:00","Idea clave","https://images.unsplash.com/photo-1589903308904-1010c2294adc?auto=format&fit=crop&w=900&q=80"],
+["Me llamaron basura en público",94,"02:30","Alta emoción","https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80"],
+["Archivo secreto: la verdad",94,"00:48","Buen gancho","https://images.unsplash.com/photo-1495020689067-958852a7765e?auto=format&fit=crop&w=900&q=80"]
+];
+const nav=[["Dashboard",Gauge],["Live",Radio],["Proyectos",FolderKanban],["Videos IA",Wand2],["Biblioteca",Library],["Análisis",TrendingUp],["Publicar",Share2]];
+function App(){
+ const [open,setOpen]=useState(false),[q,setQ]=useState(""),[active,setActive]=useState("Dashboard");
+ const filtered=useMemo(()=>clips.filter(x=>x[0].toLowerCase().includes(q.toLowerCase())),[q]);
+ return <div className="app">
+  <aside className={"side "+(open?"show":"")}>
+   <div className="brand"><div className="logo"><Clapperboard size={20}/></div><div><b>CLIP<span>RD</span></b><small>CREATOR OS</small></div><button className="mobile close" onClick={()=>setOpen(false)}><X/></button></div>
+   <div className="nav">{nav.map(([n,I])=><button key={n} onClick={()=>{setActive(n);setOpen(false)}} className={active===n?"active":""}><I size={18}/>{n}</button>)}</div>
+   <div className="section">AJUSTES</div>
+   <div className="nav secondary">{[[Users,"Revisar usuarios"],[Users,"Usuarios"],[Bell,"Avisos"],[Settings,"Configuración"],[Activity,"APIs"],[Zap,"Motor Turbo"]].map(([I,n])=><button key={n}><I size={17}/>{n}</button>)}</div>
+   <div className="owner"><div className="avatar">J</div><div><strong>Administrador</strong><small>CLIPRD Studio</small></div></div>
+  </aside>
+  {open&&<div className="shade mobile" onClick={()=>setOpen(false)}/>}
+  <main>
+   <header><button className="mobile menu" onClick={()=>setOpen(true)}><Menu/></button><div className="search"><Search size={19}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar clips, proyectos o creadores..."/></div><button className="icon"><Bell size={20}/><i/></button><div className="status"><b>CLIPRD</b><small>● Sistema activo</small></div></header>
+   <div className="content">
+    <section className="hero"><div><p><Sparkles size={15}/> CLIPRD INTELLIGENT STUDIO</p><h1>Tu centro de control para contenido viral.</h1><span>Analiza, organiza y prepara clips para publicar desde una experiencia moderna y limpia.</span></div><button className="new"><Plus size={19}/> Nuevo proyecto</button></section>
+    <section className="metrics">{[["CLIPS ACTIVOS","24","+12% esta semana"],["VISTAS TOTALES","2.8M","+18.4% rendimiento"],["PUNTAJE PROMEDIO","91/100","Excelente potencial viral"],["PUBLICACIONES","18","6 listas para exportar"]].map(x=><article><small>{x[0]}</small><b>{x[1]}</b><span>{x[2]}</span></article>)}</section>
+    <div className="title"><div><h2>{active==="Dashboard"?"Clips recientes":active}</h2><p>Tu biblioteca inteligente de contenido.</p></div><button>Ver todos</button></div>
+    <section className="grid">{filtered.map(c=><article className="clip"><div className="cover"><img src={c[4]} alt=""/><b>🔥 {c[1]}/100</b><small>{c[2]}</small></div><div className="clipbody"><h3>{c[0]}</h3><em>{c[3]}</em><div><button><Scissors size={16}/> Editar</button><button className="export"><Upload size={16}/> Exportar</button></div></div></article>)}</section>
+    <section className="bottom"><article className="chart"><div className="cardhead"><div><h3>Rendimiento del contenido</h3><p>Actividad de los últimos 7 días</p></div><TrendingUp/></div><div className="bars">{[38,62,48,86,58,92,74,100,81,66,94,78].map((h,i)=><i key={i} style={{height:h+"%"}}/>)}</div></article>
+    <article className="turbo"><div className="turbohead"><div className="turboicon"><Zap/></div><div><h3>Motor Turbo</h3><p>Procesamiento inteligente</p></div></div>{[["Analizando tendencias",92],["Detectando momentos",84],["Generando recomendaciones",100]].map(([n,v])=><div className="progress"><div><span>{n}</span><b>{v}%</b></div><i><em style={{width:v+"%"}}/></i></div>)}</article></section>
+   </div>
+  </main>
+ </div>
+}
+createRoot(document.getElementById("root")).render(<App/>);
