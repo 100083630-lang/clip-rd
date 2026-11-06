@@ -31,12 +31,16 @@ const env = (key: string): string | undefined => {
 const authDisabled = env("VITE_AUTH_ENABLED") === "false";
 export const authConfigured = !authDisabled;
 
-// ── Base URL (explícita) ─────────────────────────────────────────────────
-const baseURL =
-  env("BETTER_AUTH_URL") ??
-  (process.env.NODE_ENV === "production"
-    ? "https://clip-rd.vercel.app"
-    : "http://localhost:8080");
+// ── Base URL (FORZADA EXPLÍCITAMENTE) ─────────────────────────────────────
+// En producción, usamos el dominio de Vercel de forma fija.
+// En desarrollo, usamos localhost. Esto elimina cualquier dependencia de
+// variables de entorno que puedan no estar disponibles.
+const baseURL = process.env.NODE_ENV === "production"
+  ? "https://clip-rd.vercel.app"
+  : "http://localhost:8080";
+
+// Agrega un log para confirmar qué valor se está usando en el servidor.
+console.log(`[auth] Inicializando Better Auth con baseURL: ${baseURL}`);
 
 const trustedOrigins: string[] = [
   baseURL,
@@ -61,7 +65,7 @@ const database = databaseUrl
 export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 export const auth = betterAuth({
-  baseURL,
+  baseURL, // <-- AHORA ES UNA CADENA FIJA
   secret: env("BETTER_AUTH_SECRET") ?? previewAuthSecret(),
   database,
 
@@ -74,10 +78,8 @@ export const auth = betterAuth({
       verify: async ({ password, hash: stored }: { password: string; hash: string }) =>
         await compare(password, stored),
     },
-    // 👇 AQUÍ ESTÁ LA SOLUCIÓN: construir el enlace manualmente con `token`
     sendResetPassword: async ({ user, token }) => {
-      // Forzamos el dominio de producción (o el que definas en la variable).
-      // Ya NO usamos el `url` que viene por defecto, porque puede contener localhost.
+      // Construimos el enlace manualmente usando el baseURL forzado.
       const resetLink = `${baseURL}/reset-password?token=${token}`;
       console.log(`[auth] Enlace de restablecimiento para ${user.email}: ${resetLink}`);
     },
