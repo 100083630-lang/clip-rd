@@ -13,11 +13,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ClipperRouteImport } from './routes/clipper'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as PoliticasRouteImport } from './routes/politicas'
 import { Route as RankingRouteImport } from './routes/ranking'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminClippersRouteImport } from './routes/admin/clippers'
 import { Route as AdminClipsRouteImport } from './routes/admin/clips'
@@ -55,6 +57,11 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -78,6 +85,11 @@ const RankingRoute = RankingRouteImport.update({
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -166,11 +178,13 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/clipper': typeof ClipperRouteWithChildren
   '/dashboard': typeof DashboardRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/politicas': typeof PoliticasRoute
   '/ranking': typeof RankingRoute
   '/register': typeof RegisterRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/admin/clippers': typeof AdminClippersRoute
   '/admin/clips': typeof AdminClipsRoute
   '/admin/payments': typeof AdminPaymentsRoute
@@ -192,11 +206,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/clipper': typeof ClipperRouteWithChildren
   '/dashboard': typeof DashboardRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/politicas': typeof PoliticasRoute
   '/ranking': typeof RankingRoute
   '/register': typeof RegisterRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/admin/clippers': typeof AdminClippersRoute
   '/admin/clips': typeof AdminClipsRoute
   '/admin/payments': typeof AdminPaymentsRoute
@@ -220,11 +236,13 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/clipper': typeof ClipperRouteWithChildren
   '/dashboard': typeof DashboardRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/politicas': typeof PoliticasRoute
   '/ranking': typeof RankingRoute
   '/register': typeof RegisterRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/admin/clippers': typeof AdminClippersRoute
   '/admin/clips': typeof AdminClipsRoute
   '/admin/payments': typeof AdminPaymentsRoute
@@ -249,11 +267,13 @@ export interface FileRouteTypes {
     | '/admin'
     | '/clipper'
     | '/dashboard'
+    | '/forgot-password'
     | '/login'
     | '/notifications'
     | '/politicas'
     | '/ranking'
     | '/register'
+    | '/reset-password'
     | '/admin/clippers'
     | '/admin/clips'
     | '/admin/payments'
@@ -275,11 +295,13 @@ export interface FileRouteTypes {
     | '/'
     | '/clipper'
     | '/dashboard'
+    | '/forgot-password'
     | '/login'
     | '/notifications'
     | '/politicas'
     | '/ranking'
     | '/register'
+    | '/reset-password'
     | '/admin/clippers'
     | '/admin/clips'
     | '/admin/payments'
@@ -302,11 +324,13 @@ export interface FileRouteTypes {
     | '/admin'
     | '/clipper'
     | '/dashboard'
+    | '/forgot-password'
     | '/login'
     | '/notifications'
     | '/politicas'
     | '/ranking'
     | '/register'
+    | '/reset-password'
     | '/admin/clippers'
     | '/admin/clips'
     | '/admin/payments'
@@ -330,11 +354,13 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   ClipperRoute: typeof ClipperRouteWithChildren
   DashboardRoute: typeof DashboardRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   PoliticasRoute: typeof PoliticasRoute
   RankingRoute: typeof RankingRoute
   RegisterRoute: typeof RegisterRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronSyncRoute: typeof ApiCronSyncRoute
   ApiTiktokCallbackRoute: typeof ApiTiktokCallbackRoute
@@ -370,6 +396,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -403,6 +436,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -568,11 +608,13 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   ClipperRoute: ClipperRouteWithChildren,
   DashboardRoute: DashboardRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   PoliticasRoute: PoliticasRoute,
   RankingRoute: RankingRoute,
   RegisterRoute: RegisterRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronSyncRoute: ApiCronSyncRoute,
   ApiTiktokCallbackRoute: ApiTiktokCallbackRoute,
