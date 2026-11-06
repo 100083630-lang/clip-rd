@@ -1,5 +1,5 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Navigate, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   BadgeDollarSign,
   Bell,
@@ -14,7 +14,6 @@ import {
   X,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { signOut } from "@/lib/auth/client";
 import { ACCOUNT_STATUS, CLIP_STATUS, PAYOUT_STATUS, PLATFORM_LABEL } from "@/lib/cliprd/labels";
 import type { Profile, ReportTable } from "@/lib/cliprd/types";
 import { getMyProfile, getNotifications, markNotificationsRead } from "@/server/cliprd";
@@ -89,26 +88,8 @@ export function Authed({
   return children(profile);
 }
 
-function Locked({ profile }: { profile: Profile }) {
-  return (
-    <main className="grid min-h-screen place-items-center px-6">
-      <div className="card w-full max-w-md p-6">
-        <Logo />
-        <h1 className="mt-6 text-2xl">Cuenta {ACCOUNT_STATUS[profile.status]}</h1>
-        <p className="mt-2 text-sm text-muted">
-          {profile.displayName}, tu acceso está detenido. El historial financiero se conserva.
-        </p>
-        <button type="button" className="btn btn-ghost mt-6" onClick={() => void signOut()}>
-          Salir
-        </button>
-      </div>
-    </main>
-  );
-}
-
 export function Shell({ profile, children }: { profile: Profile; children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
   const groups = profile.role === "admin" ? ADMIN_GROUPS : CLIPPER_GROUPS;
