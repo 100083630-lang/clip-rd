@@ -1,0 +1,1 @@
+export default function handler(req,res){return res.status(200).json({ok:true,service:"CLIPRD API",youtube:Boolean(process.env.YOUTUBE_API_KEY),tiktok:Boolean(process.env.TIKTOK_CLIENT_KEY&&process.env.TIKTOK_CLIENT_SECRET),timestamp:new Date().toISOString()});}
