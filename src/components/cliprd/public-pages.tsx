@@ -110,7 +110,7 @@ export const PublicHomePage = HomePage;
 
 // ── LOGIN ───────────────────────────────────────────────────────────────
 export function LoginPage() {
-  return <AuthPausedPage />;
+  return <LoginPageLegacy />;
 }
 
 function LoginPageLegacy() {
@@ -158,8 +158,7 @@ function LoginPageLegacy() {
     <div style={authPageStyle}>
       <h1 style={{ fontSize: 30, fontWeight: 800 }}>Entrar a CLIPRD</h1>
       <p style={{ color: "#9fb3d4" }}>Accede a tu espacio de trabajo.</p>
-      <button type="button" onClick={() => void continueWithGoogle(setError, setLoading)} disabled={loading} style={googleButtonStyle}><GoogleMark />Continuar con Google</button>
-      <div style={{ textAlign: "center", color: "#91a5c5", margin: "20px 0" }}>o entra con tu correo</div>
+      <div style={{ textAlign: "center", color: "#91a5c5", margin: "20px 0" }}>Acceso privado con correo y contraseña</div>
       <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <label>
           Correo
@@ -174,8 +173,8 @@ function LoginPageLegacy() {
           {loading ? "Entrando..." : "Entrar"}
         </button>
       </form>
-      <p style={{ marginTop: 16 }}>
-        ¿No tienes cuenta? <Link to="/register">Crear cuenta</Link>
+      <p style={{ marginTop: 16, color: "#91a5c5", fontSize: 13 }}>
+        El registro público permanece cerrado temporalmente.
       </p>
     </div>
   );
