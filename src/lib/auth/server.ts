@@ -29,6 +29,13 @@ const env = (key: string): string | undefined => {
   return value ? value : undefined;
 };
 
+// Explicit off-switch. The deployer sets `VITE_AUTH_ENABLED=true` when it
+// provisions auth; set it to "false" to force auth off everywhere (dev user).
+const authDisabled = env("VITE_AUTH_ENABLED") === "false";
+
+/** True when auth is active (email/password). */
+export const authConfigured = !authDisabled;
+
 // ── Base URL ──────────────────────────────────────────────────────────────
 const rawBetterAuthURL = env("BETTER_AUTH_URL");
 const explicitBaseURL = rawBetterAuthURL
@@ -141,8 +148,6 @@ export const auth = betterAuth({
   plugins: [
     bearer(),
     tanstackStartCookies(),
-    // gateIdentitySessions() se elimina si era parte del flujo de Grok.
-    // Si lo necesitas para otra cosa, vuelve a añadirlo.
   ],
 });
 
