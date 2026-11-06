@@ -3,7 +3,6 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import { useState } from "react";
 import { Toaster } from "sonner";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
-import { AuthProvider } from "@/lib/auth/provider";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -40,12 +39,10 @@ function Root() {
       </head>
       <body>
         <PreviewHostBridge />
-        <AuthProvider>
-          <QueryClientProvider client={queryClient}>
-            <Outlet />
-            <Toaster theme="dark" position="top-center" />
-          </QueryClientProvider>
-        </AuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <Outlet />
+          <Toaster theme="dark" position="top-center" />
+        </QueryClientProvider>
         <Scripts />
       </body>
     </html>
