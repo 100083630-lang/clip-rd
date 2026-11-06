@@ -1,0 +1,1 @@
+export default function handler(req,res){return res.status(200).json({configured:Boolean(process.env.TIKTOK_CLIENT_KEY&&process.env.TIKTOK_CLIENT_SECRET),mode:"oauth-required"});}
