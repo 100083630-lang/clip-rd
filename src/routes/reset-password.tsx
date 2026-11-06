@@ -1,75 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
-import { authClient } from "@/lib/auth/client";
 
-type Search = { token?: string };
-
-export const Route = createFileRoute("/reset-password")({
-  validateSearch: (search: Record<string, unknown>): Search => ({
-    token: typeof search.token === "string" ? search.token : undefined,
-  }),
-  component: ResetPasswordPage,
-});
+export const Route = createFileRoute("/reset-password")({ component: ResetPasswordPage });
 
 function ResetPasswordPage() {
-  const { token } = Route.useSearch();
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  if (!token) {
-    return (
-      <div className="mx-auto max-w-sm p-6">
-        <h1 className="mb-4 text-2xl font-semibold">Enlace inválido</h1>
-        <p className="text-sm">
-          Este enlace no es válido o expiró.{" "}
-          <Link to="/forgot-password" className="underline-offset-4 hover:underline">
-            Solicita uno nuevo
-          </Link>
-          .
-        </p>
-      </div>
-    );
-  }
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    const { error } = await authClient.resetPassword({
-      newPassword: password,
-      token,
-    });
-    setLoading(false);
-    if (error) {
-      setError(error.message ?? "No se pudo restablecer la contraseña");
-      return;
-    }
-    window.location.href = "/login";
-  }
-
-  return (
-    <div className="mx-auto max-w-sm p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Nueva contraseña</h1>
-      <form onSubmit={onSubmit} className="space-y-3">
-        <input
-          type="password"
-          required
-          autoComplete="new-password"
-          placeholder="Nueva contraseña"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-md border px-3 py-2"
-        />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-md bg-black px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-black"
-        >
-          {loading ? "Guardando…" : "Guardar contraseña"}
-        </button>
-      </form>
-    </div>
-  );
+  return <main className="min-h-screen bg-[#07111f] px-6 py-20 text-white"><section className="mx-auto max-w-lg rounded-2xl border border-white/10 bg-white/[.03] p-8"><p className="text-sm font-bold tracking-[.2em] text-cyan-400">CLIPRD</p><h1 className="mt-3 text-3xl font-black">Sistema reiniciado</h1><p className="mt-4 leading-7 text-slate-300">La recuperación de contraseña se reconstruirá junto con el nuevo sistema de acceso. Puedes navegar la versión pública sin iniciar sesión.</p><Link to="/dashboard" className="mt-7 inline-flex rounded-xl bg-cyan-400 px-5 py-3 font-bold text-slate-950">Ir al dashboard</Link></section></main>;
 }
