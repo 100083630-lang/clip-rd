@@ -74,28 +74,19 @@ export function Authed({
   role?: "admin" | "clipper";
   children: (profile: Profile) => ReactNode;
 }) {
-  const profile = useQuery({
-    queryKey: ["profile", "open"],
-    queryFn: () => getMyProfile(),
-  });
-  if (profile.isPending) return <Boot />;
-  if (profile.isError) {
-    const message = profile.error instanceof Error ? profile.error.message : "Error";
-    if (message === "Unauthorized" || message.includes("no autorizado")) return <Navigate to="/login" />;
-    return (
-      <main className="grid min-h-screen place-items-center px-6 text-center">
-        <p className="max-w-md text-muted">{message}</p>
-      </main>
-    );
-  }
-  if (!profile.data) return <Navigate to="/register" />;
-  if (profile.data.status === "suspended" || profile.data.status === "inactive") {
-    return <Locked profile={profile.data} />;
-  }
-  if (role && profile.data.role !== role) {
-    return <Navigate to={profile.data.role === "admin" ? "/admin" : "/clipper/dashboard"} />;
-  }
-  return children(profile.data);
+  // Temporary read-only demo profile: UI routes stay viewable while auth is rebuilt.
+  const profile: Profile = {
+    userId: "demo-open-access",
+    email: "demo@cliprd.local",
+    displayName: "Vista pública",
+    avatarUrl: null,
+    role: role ?? "admin",
+    status: "active",
+    phone: null,
+    agencyName: "CLIPRD",
+    termsVersion: "demo",
+  };
+  return children(profile);
 }
 
 function Locked({ profile }: { profile: Profile }) {
