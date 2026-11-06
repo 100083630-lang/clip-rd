@@ -136,6 +136,7 @@ function LoginPageLegacy() {
       const { error: signError } = await authClient.signIn.email({
         email: email.trim(),
         password,
+        rememberMe: true,
       });
       if (signError) throw new Error(signError.message ?? "No se pudo iniciar sesión.");
       try {
