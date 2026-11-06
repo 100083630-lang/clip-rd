@@ -11,7 +11,7 @@ import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
 import { pgliteDialect } from "./pglite-dialect";
-import { PREVIEW_ALLOWED_HOSTS } from "./preview"; // solo para orígenes de preview
+import { PREVIEW_ALLOWED_HOSTS } from "./preview";
 
 // Kick (and share) PGLite bootstrap as soon as the auth server module loads.
 void ensureDbReady();
@@ -29,54 +29,27 @@ const env = (key: string): string | undefined => {
   return value ? value : undefined;
 };
 
-// Explicit off-switch. The deployer sets `VITE_AUTH_ENABLED=true` when it
-// provisions auth; set it to "false" to force auth off everywhere (dev user).
 const authDisabled = env("VITE_AUTH_ENABLED") === "false";
-
-/** True when auth is active (email/password). */
 export const authConfigured = !authDisabled;
 
-// ── Base URL ──────────────────────────────────────────────────────────────
-const rawBetterAuthURL = env("BETTER_AUTH_URL");
-const explicitBaseURL = rawBetterAuthURL
-  ? new URL(rawBetterAuthURL).origin
-  : undefined;
+// ── Base URL (EXPLÍCITA) ─────────────────────────────────────────────────
+// Se usa directamente la variable de entorno. Vercel la inyecta en producción.
+// En desarrollo local, se usa el fallback a localhost.
+const baseURL =
+  env("BETTER_AUTH_URL") ??
+  (process.env.NODE_ENV === "production"
+    ? "https://clip-rd.vercel.app" // Fallback de seguridad para producción
+    : "http://localhost:8080");
 
-const rawVercelURL = env("VERCEL_URL");
-const normalizedVercelHost = rawVercelURL
-  ?.replace("https://", "")
-  .replace("http://", "")
-  .replace(/\/$/, "");
-const vercelOrigin = normalizedVercelHost
-  ? `https://${normalizedVercelHost}`
-  : undefined;
-
-const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
-const LOCAL_DEV_ORIGINS: string[] = [
-  "http://localhost:8080",
-  "http://127.0.0.1:8080",
-  "http://[::1]:8080",
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-];
-const APP_ORIGINS: string[] = [
+// ── Orígenes de confianza ───────────────────────────────────────────────
+const trustedOrigins: string[] = [
+  baseURL,
   "https://clip-rd.vercel.app",
   "https://clip-rd-ten.vercel.app",
-  ...LOCAL_DEV_ORIGINS,
-];
-
-const baseURL = explicitBaseURL ?? {
-  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]"],
-  protocol: "auto" as const,
-  fallback: "http://localhost:8080",
-};
-
-const trustedOrigins: string[] = [
-  ...(explicitBaseURL ? [explicitBaseURL] : []),
-  ...(vercelOrigin ? [vercelOrigin] : []),
-  ...previewAllowedHosts,
-  ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
-  ...APP_ORIGINS,
+  "http://localhost:8080",
+  "http://127.0.0.1:8080",
+  "http://localhost:3000",
+  ...PREVIEW_ALLOWED_HOSTS.map((host) => `https://${host}`),
 ];
 
 // ── Database ──────────────────────────────────────────────────────────────
@@ -95,36 +68,24 @@ export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 // ── Better Auth instance ─────────────────────────────────────────────────
 export const auth = betterAuth({
-  baseURL,
+  baseURL, // <-- AHORA ES UNA CADENA FIJA
   secret: env("BETTER_AUTH_SECRET") ?? previewAuthSecret(),
   database,
 
   trustedOrigins,
 
-  // Solo email/password. Sin OAuth, sin Grok.
   emailAndPassword: {
     enabled: true,
     password: {
-      // Hashear nuevas contraseñas con bcrypt (compatible con usuarios existentes)
       hash: async (password: string) => {
         return await hash(password, 10);
       },
-      // Verificar contraseñas existentes con bcrypt
       verify: async ({ password, hash: stored }: { password: string; hash: string }) => {
         return await compare(password, stored);
       },
     },
-    // Flujo de "Olvidé mi contraseña": Better Auth genera `url` con el token.
-    // Reemplaza el console.log por tu proveedor (Resend, SMTP, etc.).
     sendResetPassword: async ({ user, url }) => {
       console.log(`[auth] Enlace de restablecimiento para ${user.email}: ${url}`);
-      // Ejemplo con Resend:
-      // await resend.emails.send({
-      //   from: 'no-reply@tudominio.com',
-      //   to: user.email,
-      //   subject: 'Restablece tu contraseña',
-      //   html: `<a href="${url}">Haz clic aquí</a>`,
-      // });
     },
   },
 
@@ -132,7 +93,6 @@ export const auth = betterAuth({
 
   advanced: {
     database: { generateId: "uuid" },
-    // Recomiendo habilitar estas comprobaciones en producción; las dejo como estaban para no romper tu entorno actual.
     disableOriginCheck: true,
     disableCSRFCheck: true,
     useSecureCookies: false,
