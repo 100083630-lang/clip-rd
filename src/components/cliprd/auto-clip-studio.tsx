@@ -63,7 +63,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   const [transcript, setTranscript] = useState("");
   const [clips, setClips] = useState<Segment[]>(demo);
   const [selected, setSelected] = useState<number[]>([1, 2]);
-  const [processing, setProcessing] = useState(false);
+  const [processing, setProcessing] = useState(false);\n  const [pipelineMessage, setPipelineMessage] = useState("Pipeline listo para recibir trabajos.");
   const [topN, setTopN] = useState(3);
   const [videoName, setVideoName] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -96,7 +96,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     return () => window.clearInterval(timer);
   }, [liveOn, liveSeconds, topN]);
 
-  function runAnalysis() {
+  async function sendToPipeline(items: Segment[]) {\n    try {\n      const response = await fetch("/api/pipeline/jobs", {\n        method: "POST", headers: { "Content-Type": "application/json" },\n        body: JSON.stringify({ transcript, mode: duration, clips: items.filter((x) => selected.includes(x.id)) }),\n      });\n      const data = await response.json();\n      if (!response.ok) throw new Error(data.error || "No se pudo crear el trabajo");\n      setPipelineMessage(data.dispatched ? `Trabajo ${data.job.id.slice(0, 8)} enviado al renderer.` : `Trabajo ${data.job.id.slice(0, 8)} guardado en cola. Configura el renderer para procesarlo.`);\n    } catch (error) { setPipelineMessage(error instanceof Error ? error.message : "Error al enviar al pipeline"); }\n  }\n\n  function runAnalysis() {
     setProcessing(true);
     window.setTimeout(() => {
       const result = analyze(transcript, duration);
@@ -155,7 +155,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
               <div className="mt-3 flex flex-wrap gap-2">
                 {([["viral", "🔥 Máximo potencial"], ["short", "📱 Shorts 20–60s"], ["long", "🎬 Clips 60–180s"]] as const).map(([v, label]) => <button key={v} onClick={() => setDuration(v)} className={`btn ${duration === v ? "btn-primary" : "btn-ghost"}`}>{label}</button>)}
               </div>
-              <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar y seleccionar mejores momentos"}</button>
+              <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar y seleccionar mejores momentos"}</button>\n              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length} className="btn btn-ghost mt-2 w-full"><Upload className="size-4" /> Enviar selección al pipeline real</button>\n              <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>
             </div>
           </section>
 
