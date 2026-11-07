@@ -51,11 +51,12 @@ function scoreLine(text: string, index: number, mode: DurationMode): Segment {
 }
 
 function analyze(text: string, mode: DurationMode) {
-  const lines = text.split(/
-+/).map((x) => x.trim()).filter((x) => x.length > 8);
+  const lines = text.split("\n").map((x) => x.trim()).filter((x) => x.length > 8);
   if (!lines.length) return demo;
-  return lines.map((line, i) => scoreLine(line.replace(/^\d{1,2}:\d{2}(?::\d{2})?\s*[-–—]?\s*/, ""), i, mode))
-    .sort((a, b) => b.score - a.score).slice(0, 12);
+  return lines
+    .map((line, i) => scoreLine(line.replace(/^\d{1,2}:\d{2}(?::\d{2})?\s*[-–—]?\s*/, ""), i, mode))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12);
 }
 
 export function AutoClipStudio({ profile }: { profile: Profile }) {
