@@ -14,11 +14,7 @@ type Segment = {
 type Mode = "studio" | "live";
 type DurationMode = "short" | "viral" | "long";
 
-const demo: Segment[] = [
-  { id: 1, start: "00:42:18", end: "00:43:01", seconds: 43, score: 97, title: "La confesión que nadie esperaba", reason: "Hook fuerte + sorpresa + contexto completo", tags: ["Hook", "Sorpresa", "Alta retención"] },
-  { id: 2, start: "01:18:06", end: "01:18:49", seconds: 43, score: 94, title: "Aquí fue donde explotó la conversación", reason: "Conflicto + reacción + frase contundente", tags: ["Polémica", "Emoción"] },
-  { id: 3, start: "00:31:20", end: "00:31:58", seconds: 38, score: 91, title: "Te voy a decir una verdad", reason: "Opinión directa + cierre claro", tags: ["Opinión", "Hook"] },
-];
+
 
 function stamp(n: number) {
   const h = Math.floor(n / 3600);
@@ -76,7 +72,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   const [duration, setDuration] = useState<DurationMode>("viral");
   const [transcript, setTranscript] = useState("");
   const [clips, setClips] = useState<Segment[]>([]);
-  const [selected, setSelected] = useState<number[]>([1, 2]);
+  const [selected, setSelected] = useState<number[]>([]);
   const [processing, setProcessing] = useState(false);
   const [pipelineMessage, setPipelineMessage] = useState("Pipeline listo para recibir trabajos.");
   const [topN, setTopN] = useState(3);
@@ -86,8 +82,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   const [outputLinks, setOutputLinks] = useState<string[]>([]);
   const [liveUrl, setLiveUrl] = useState("");
   const [liveOn, setLiveOn] = useState(false);
-  const [liveSeconds, setLiveSeconds] = useState(0);
-  const [events, setEvents] = useState<string[]>(["Motor listo. Esperando fuente autorizada."]);
+  const [events] = useState<string[]>(["Ingesta Live no configurada."]);
   const videoInput = useRef<HTMLInputElement>(null);
   const transcriptInput = useRef<HTMLInputElement>(null);
 
@@ -139,7 +134,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
 
   return (
     <Shell profile={profile}>
-      <PageTitle kicker="CLIPRD · INTELLIGENCE ENGINE" title="AI Clipping Command Center" text="Una interfaz de producción para analizar videos y supervisar fuentes Live autorizadas." />
+      <PageTitle kicker="CLIPRD · INTELLIGENCE ENGINE" title="Clip Studio" text="Analiza transcripciones con marcas de tiempo reales y genera MP4 mediante un renderer externo. La puntuación actual es heurística, no una IA generativa." />
 
       <div className="mb-6 grid gap-3 md:grid-cols-[1fr_auto]">
         <div className="card overflow-hidden p-1">
@@ -182,7 +177,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
 
           <aside className="space-y-4">
             <section className="card p-5"><div className="flex items-center justify-between"><div><p className="label">TOP AUTO-SELECTION</p><p className="mt-1 text-4xl font-black">{topN}</p></div><Zap className="size-9 text-neon" /></div><input className="mt-5 w-full" type="range" min="1" max="6" value={topN} onChange={(e) => setTopN(Number(e.target.value))} /><p className="mt-2 text-xs text-muted">CLIPRD marca automáticamente los {topN} mejores.</p></section>
-            <section className="card p-5"><p className="label">AI SIGNALS</p><div className="mt-4 space-y-3 text-sm">{["Hook y curiosidad","Emoción y energía","Conflicto y polémica","Giros de conversación","Duración y contexto"].map((x, i) => <div key={x} className="flex items-center justify-between"><span>{x}</span><span className="text-neon">{[96, 91, 88, 84, 93][i]}%</span></div>)}</div></section>
+            <section className="card p-5"><p className="label">CRITERIOS DE PUNTUACIÓN</p><div className="mt-4 flex flex-wrap gap-2 text-xs">{["Hook y curiosidad","Emoción","Conflicto","Giros","Claridad"].map((item) => <span key={item} className="rounded-full border border-border px-3 py-2 text-muted">{item}</span>)}</div></section>
             <section className="card p-5"><p className="label">OUTPUT PIPELINE</p><div className="mt-4 space-y-3 text-sm"><Step n="01" text="Detectar momento" /><Step n="02" text="Puntuar potencial" /><Step n="03" text="Preparar render" /><Step n="04" text="Exportar / publicar" /></div></section>
           </aside>
         </div>
@@ -191,12 +186,12 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
           <div className="card overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border p-5">
               <div><div className="flex items-center gap-2"><CircleDot className={`size-5 ${liveOn ? "text-danger" : "text-muted"}`} /><h2 className="text-xl font-black">Live Intelligence Monitor</h2></div><p className="mt-1 text-sm text-muted">Conecta una fuente que controles o tengas autorización para procesar.</p></div>
-              <button onClick={() => { setLiveOn(false); setEvents(["La ingestión Live no está conectada todavía. No se simulan detecciones. Usa AI Studio para procesar un archivo autorizado."]); }} className={`btn ${liveOn ? "btn-danger" : "btn-primary"}`}>{liveOn ? <><Pause className="size-4" /> Detener motor</> : <><Play className="size-4" /> Iniciar monitor</>}</button>
+              <button type="button" disabled className="btn btn-ghost">Ingesta Live no configurada</button>
             </div>
             <div className="p-5">
               <label className="field"><span className="label">FUENTE LIVE AUTORIZADA</span><input className="input" value={liveUrl} onChange={(e) => setLiveUrl(e.target.value)} placeholder="https://… fuente conectada/autorizada" /></label>
               <div className="mt-4 aspect-video rounded-2xl border border-border bg-[radial-gradient(circle_at_center,rgba(46,255,125,.12),transparent_55%)] p-6">
-                <div className="flex h-full flex-col justify-between"><div className="flex justify-between"><span className={`rounded-full px-3 py-1 text-xs font-black ${liveOn ? "bg-danger/15 text-danger" : "bg-surface-2 text-muted"}`}>{liveOn ? "● LIVE ANALYZING" : "● OFFLINE"}</span><span className="font-mono text-sm text-muted">{stamp(liveSeconds)}</span></div><div><Activity className="mb-3 size-10 text-neon" /><h3 className="text-3xl font-black">El motor escucha señales, no inventa clips.</h3><p className="mt-2 max-w-xl text-sm text-muted">La conexión de ingestión Live aún no está implementada. Esta pantalla no genera eventos ficticios.</p></div></div>
+                <div className="flex h-full flex-col justify-between"><div className="flex justify-between"><span className={`rounded-full px-3 py-1 text-xs font-black ${liveOn ? "bg-danger/15 text-danger" : "bg-surface-2 text-muted"}`}>{liveOn ? "● LIVE ANALYZING" : "● OFFLINE"}</span><span className="font-mono text-sm text-muted">—</span></div><div><Activity className="mb-3 size-10 text-neon" /><h3 className="text-3xl font-black">El motor escucha señales, no inventa clips.</h3><p className="mt-2 max-w-xl text-sm text-muted">La conexión de ingestión Live aún no está implementada. Esta pantalla no genera eventos ficticios.</p></div></div>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3"><Metric icon={<Flame className="size-4" />} label="Momentos" value={String(clips.length)} /><Metric icon={<Activity className="size-4" />} label="Score medio" value={`${avg}/100`} /><Metric icon={<Scissors className="size-4" />} label="En cola" value={String(selected.length)} /></div>
             </div>
