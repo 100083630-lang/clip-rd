@@ -8,6 +8,7 @@ import {
   Menu,
   Plus,
   Settings,
+  Sparkles,
   Trophy,
   Users,
   Wallet,
@@ -40,6 +41,7 @@ const CLIPPER_GROUPS = [
     label: "Mi trabajo",
     items: [
       { to: "/clipper/dashboard", label: "Panel", icon: LayoutDashboard, exact: true },
+      { to: "/clipper/auto-clip", label: "Auto Clipper AI", icon: Sparkles },
       { to: "/clipper/register-clip", label: "Registrar", icon: Plus },
       { to: "/clipper/my-clips", label: "Mis clips", icon: Clapperboard },
       { to: "/clipper/earnings", label: "Ganancias", icon: BadgeDollarSign },
