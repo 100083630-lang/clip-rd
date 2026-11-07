@@ -50,26 +50,40 @@ function scoreLine(text: string, index: number, mode: DurationMode): Segment {
   };
 }
 
+function parseTimestamp(value: string): number {
+  const parts = value.split(":").map(Number);
+  if (parts.some((part) => !Number.isFinite(part))) return NaN;
+  return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
 function analyze(text: string, mode: DurationMode) {
-  const lines = text.split("\n").map((x) => x.trim()).filter((x) => x.length > 8);
-  if (!lines.length) return demo;
-  return lines
-    .map((line, i) => scoreLine(line.replace(/^\d{1,2}:\d{2}(?::\d{2})?\s*[-–—]?\s*/, ""), i, mode))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 12);
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const parsed = lines.flatMap((line, index) => {
+    const match = line.match(/^(\d{1,3}:\d{2}(?::\d{2})?)\s*(?:[-–—|]\s*)?(.+)$/);
+    if (!match) return [];
+    const start = parseTimestamp(match[1]);
+    const spoken = match[2].trim();
+    if (!Number.isFinite(start) || !spoken || spoken.length < 8) return [];
+    const item = scoreLine(spoken, index, mode);
+    const seconds = mode === "long" ? 92 : mode === "short" ? 32 : 44;
+    return [{ ...item, id: index + 1, start: stamp(start), end: stamp(start + seconds), seconds }];
+  });
+  return parsed.sort((left, right) => right.score - left.score).slice(0, 12);
 }
 
 export function AutoClipStudio({ profile }: { profile: Profile }) {
   const [tab, setTab] = useState<Mode>("studio");
   const [duration, setDuration] = useState<DurationMode>("viral");
   const [transcript, setTranscript] = useState("");
-  const [clips, setClips] = useState<Segment[]>(demo);
+  const [clips, setClips] = useState<Segment[]>([]);
   const [selected, setSelected] = useState<number[]>([1, 2]);
   const [processing, setProcessing] = useState(false);
   const [pipelineMessage, setPipelineMessage] = useState("Pipeline listo para recibir trabajos.");
   const [topN, setTopN] = useState(3);
   const [videoName, setVideoName] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [outputLinks, setOutputLinks] = useState<string[]>([]);
   const [liveUrl, setLiveUrl] = useState("");
   const [liveOn, setLiveOn] = useState(false);
   const [liveSeconds, setLiveSeconds] = useState(0);
@@ -79,46 +93,34 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
 
   const avg = useMemo(() => clips.length ? Math.round(clips.reduce((s, c) => s + c.score, 0) / clips.length) : 0, [clips]);
 
-  useEffect(() => {
-    if (!liveOn) return;
-    const timer = window.setInterval(() => {
-      setLiveSeconds((s) => s + 1);
-      if (Math.random() > 0.7) {
-        const score = 76 + Math.floor(Math.random() * 23);
-        const item: Segment = {
-          id: Date.now(), start: stamp(liveSeconds), end: stamp(liveSeconds + 38), seconds: 38, score,
-          title: score > 90 ? "Momento fuerte detectado en directo" : "Cambio de intensidad detectado",
-          reason: score > 90 ? "Pico de emoción + posible hook" : "Variación de energía y conversación",
-          tags: score > 90 ? ["LIVE", "Pico", "Revisión"] : ["LIVE", "Actividad"],
-        };
-        setClips((current) => [item, ...current].slice(0, 12));
-        setSelected((current) => score > 90 ? [item.id, ...current].slice(0, topN) : current);
-        setEvents((current) => [`${stamp(liveSeconds)} · Momento detectado · Score ${score}/100`, ...current].slice(0, 6));
-      }
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [liveOn, liveSeconds, topN]);
+  useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
 
   async function sendToPipeline(items: Segment[]) {
+    const chosen = items.filter((item) => selected.includes(item.id));
+    if (!/^https:\/\//i.test(sourceUrl.trim())) { setPipelineMessage("Añade una URL HTTPS directa del archivo de video autorizado."); return; }
+    if (!chosen.length) { setPipelineMessage("Selecciona al menos un momento con timestamp real."); return; }
     try {
+      setPipelineMessage("Enviando al renderer y esperando los MP4…");
       const response = await fetch("/api/pipeline/jobs", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript, mode: duration, clips: items.filter((x) => selected.includes(x.id)) }),
+        body: JSON.stringify({ sourceUrl: sourceUrl.trim(), transcript, mode: duration, clips: chosen }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "No se pudo crear el trabajo");
-      setPipelineMessage(data.dispatched ? `Trabajo ${data.job.id.slice(0, 8)} enviado al renderer.` : `Trabajo ${data.job.id.slice(0, 8)} guardado en cola. Configura el renderer para procesarlo.`);
+      if (!response.ok) throw new Error(data.job?.error || data.error || "No se pudo crear el trabajo");
+      const links = Array.isArray(data.outputs) ? data.outputs.map((item: { url?: string }) => item.url).filter((url: unknown): url is string => typeof url === "string") : [];
+      setOutputLinks(links);
+      setPipelineMessage(data.dispatched ? `Trabajo ${data.job.id.slice(0, 8)} terminado: ${links.length} MP4 listo(s).` : `Trabajo ${data.job.id.slice(0, 8)} guardado en cola. Falta configurar el renderer.`);
     } catch (error) { setPipelineMessage(error instanceof Error ? error.message : "Error al enviar al pipeline"); }
   }
 
   function runAnalysis() {
     setProcessing(true);
-    window.setTimeout(() => {
-      const result = analyze(transcript, duration);
-      setClips(result);
-      setSelected(result.slice(0, topN).map((x) => x.id));
-      setProcessing(false);
-    }, 850);
+    const result = analyze(transcript, duration);
+    setClips(result);
+    setSelected(result.slice(0, topN).map((item) => item.id));
+    setOutputLinks([]);
+    setProcessing(false);
+    setPipelineMessage(result.length ? `${result.length} momentos con timestamp real detectados.` : "No encontré timestamps válidos. Usa una transcripción con una línea por momento, por ejemplo 00:01:24 - Aquí comienza la frase.");
   }
 
   function loadVideo(file?: File) {
@@ -166,13 +168,15 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
               <input ref={videoInput} className="hidden" type="file" accept="video/*" onChange={(e) => loadVideo(e.target.files?.[0])} />
               <input ref={transcriptInput} className="hidden" type="file" accept=".txt,text/plain" onChange={(e) => loadTranscript(e.target.files?.[0])} />
               {videoUrl && <video src={videoUrl} controls className="mt-4 max-h-[420px] w-full rounded-2xl border border-border bg-black" />}
-              <textarea className="textarea mt-4 min-h-52" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Pega la transcripcion aqui. Ejemplo: Nadie esperaba que yo dijera esto." />
+              <label className="field mt-4"><span className="label">URL DIRECTA DEL VIDEO AUTORIZADO</span><input className="input" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://servidor.com/video.mp4" /><span className="text-xs text-muted">Debe ser un enlace HTTPS descargable al archivo de video. Un enlace de página de YouTube o TikTok no sirve como archivo fuente.</span></label>
+              <textarea className="textarea mt-4 min-h-52" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder={"Pega una transcripción con timestamps, una línea por momento. Ejemplo: 00:01:24 - Nadie esperaba que yo dijera esto."} />
               <div className="mt-3 flex flex-wrap gap-2">
                 {([["viral", "🔥 Máximo potencial"], ["short", "📱 Shorts 20–60s"], ["long", "🎬 Clips 60–180s"]] as const).map(([v, label]) => <button key={v} onClick={() => setDuration(v)} className={`btn ${duration === v ? "btn-primary" : "btn-ghost"}`}>{label}</button>)}
               </div>
               <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar y seleccionar mejores momentos"}</button>
               <button onClick={() => sendToPipeline(clips)} disabled={!selected.length} className="btn btn-ghost mt-2 w-full"><Upload className="size-4" /> Enviar selección al pipeline real</button>
               <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>
+              {outputLinks.length > 0 && <div className="mt-3 space-y-2">{outputLinks.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer" className="block rounded-xl border border-neon/40 p-3 text-sm font-bold text-neon">Descargar MP4 #{index + 1} ↗</a>)}</div>}
             </div>
           </section>
 
@@ -187,12 +191,12 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
           <div className="card overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border p-5">
               <div><div className="flex items-center gap-2"><CircleDot className={`size-5 ${liveOn ? "text-danger" : "text-muted"}`} /><h2 className="text-xl font-black">Live Intelligence Monitor</h2></div><p className="mt-1 text-sm text-muted">Conecta una fuente que controles o tengas autorización para procesar.</p></div>
-              <button onClick={() => { if (!liveOn && !liveUrl.trim()) { setEvents(["Añade una fuente Live autorizada para iniciar."]); return; } setLiveOn((v) => !v); }} className={`btn ${liveOn ? "btn-danger" : "btn-primary"}`}>{liveOn ? <><Pause className="size-4" /> Detener motor</> : <><Play className="size-4" /> Iniciar monitor</>}</button>
+              <button onClick={() => { setLiveOn(false); setEvents(["La ingestión Live no está conectada todavía. No se simulan detecciones. Usa AI Studio para procesar un archivo autorizado."]); }} className={`btn ${liveOn ? "btn-danger" : "btn-primary"}`}>{liveOn ? <><Pause className="size-4" /> Detener motor</> : <><Play className="size-4" /> Iniciar monitor</>}</button>
             </div>
             <div className="p-5">
               <label className="field"><span className="label">FUENTE LIVE AUTORIZADA</span><input className="input" value={liveUrl} onChange={(e) => setLiveUrl(e.target.value)} placeholder="https://… fuente conectada/autorizada" /></label>
               <div className="mt-4 aspect-video rounded-2xl border border-border bg-[radial-gradient(circle_at_center,rgba(46,255,125,.12),transparent_55%)] p-6">
-                <div className="flex h-full flex-col justify-between"><div className="flex justify-between"><span className={`rounded-full px-3 py-1 text-xs font-black ${liveOn ? "bg-danger/15 text-danger" : "bg-surface-2 text-muted"}`}>{liveOn ? "● LIVE ANALYZING" : "● OFFLINE"}</span><span className="font-mono text-sm text-muted">{stamp(liveSeconds)}</span></div><div><Activity className="mb-3 size-10 text-neon" /><h3 className="text-3xl font-black">El motor escucha señales, no inventa clips.</h3><p className="mt-2 max-w-xl text-sm text-muted">Los momentos de alta puntuación entran automáticamente a la cola de revisión.</p></div></div>
+                <div className="flex h-full flex-col justify-between"><div className="flex justify-between"><span className={`rounded-full px-3 py-1 text-xs font-black ${liveOn ? "bg-danger/15 text-danger" : "bg-surface-2 text-muted"}`}>{liveOn ? "● LIVE ANALYZING" : "● OFFLINE"}</span><span className="font-mono text-sm text-muted">{stamp(liveSeconds)}</span></div><div><Activity className="mb-3 size-10 text-neon" /><h3 className="text-3xl font-black">El motor escucha señales, no inventa clips.</h3><p className="mt-2 max-w-xl text-sm text-muted">La conexión de ingestión Live aún no está implementada. Esta pantalla no genera eventos ficticios.</p></div></div>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3"><Metric icon={<Flame className="size-4" />} label="Momentos" value={String(clips.length)} /><Metric icon={<Activity className="size-4" />} label="Score medio" value={`${avg}/100`} /><Metric icon={<Scissors className="size-4" />} label="En cola" value={String(selected.length)} /></div>
             </div>
@@ -217,7 +221,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
         </div>
       </section>
 
-      <section className="card mt-6 p-5"><div className="flex gap-4"><MonitorPlay className="mt-1 size-6 text-neon" /><div><h2 className="text-xl font-black">Pipeline de producción</h2><p className="mt-1 text-sm text-muted">La interfaz ya organiza detección y cola. Para generar MP4 reales en producción, el siguiente backend conecta storage, jobs persistentes, FFmpeg/worker y subtítulos. Ese procesamiento pesado debe ejecutarse fuera del navegador y con una fuente de video autorizada.</p></div><ChevronRight className="ml-auto size-5 text-muted" /></div></section>
+      <section className="card mt-6 p-5"><div className="flex gap-4"><MonitorPlay className="mt-1 size-6 text-neon" /><div><h2 className="text-xl font-black">Pipeline de producción</h2><p className="mt-1 text-sm text-muted">Los MP4 se generan en el servicio FFmpeg externo. Para completar el flujo, configura CLIPRD_RENDERER_URL y CLIPRD_RENDERER_TOKEN en Vercel, y SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y CLIPRD_RENDERER_TOKEN en el renderer. La fuente debe ser un archivo descargable autorizado.</p></div><ChevronRight className="ml-auto size-5 text-muted" /></div></section>
     </Shell>
   );
 }
