@@ -51,7 +51,8 @@ function scoreLine(text: string, index: number, mode: DurationMode): Segment {
 }
 
 function analyze(text: string, mode: DurationMode) {
-  const lines = text.split(/\n+/).map((x) => x.trim()).filter((x) => x.length > 8);
+  const lines = text.split(/
++/).map((x) => x.trim()).filter((x) => x.length > 8);
   if (!lines.length) return demo;
   return lines.map((line, i) => scoreLine(line.replace(/^\d{1,2}:\d{2}(?::\d{2})?\s*[-–—]?\s*/, ""), i, mode))
     .sort((a, b) => b.score - a.score).slice(0, 12);
@@ -63,7 +64,8 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   const [transcript, setTranscript] = useState("");
   const [clips, setClips] = useState<Segment[]>(demo);
   const [selected, setSelected] = useState<number[]>([1, 2]);
-  const [processing, setProcessing] = useState(false);\n  const [pipelineMessage, setPipelineMessage] = useState("Pipeline listo para recibir trabajos.");
+  const [processing, setProcessing] = useState(false);
+  const [pipelineMessage, setPipelineMessage] = useState("Pipeline listo para recibir trabajos.");
   const [topN, setTopN] = useState(3);
   const [videoName, setVideoName] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -96,7 +98,19 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     return () => window.clearInterval(timer);
   }, [liveOn, liveSeconds, topN]);
 
-  async function sendToPipeline(items: Segment[]) {\n    try {\n      const response = await fetch("/api/pipeline/jobs", {\n        method: "POST", headers: { "Content-Type": "application/json" },\n        body: JSON.stringify({ transcript, mode: duration, clips: items.filter((x) => selected.includes(x.id)) }),\n      });\n      const data = await response.json();\n      if (!response.ok) throw new Error(data.error || "No se pudo crear el trabajo");\n      setPipelineMessage(data.dispatched ? `Trabajo ${data.job.id.slice(0, 8)} enviado al renderer.` : `Trabajo ${data.job.id.slice(0, 8)} guardado en cola. Configura el renderer para procesarlo.`);\n    } catch (error) { setPipelineMessage(error instanceof Error ? error.message : "Error al enviar al pipeline"); }\n  }\n\n  function runAnalysis() {
+  async function sendToPipeline(items: Segment[]) {
+    try {
+      const response = await fetch("/api/pipeline/jobs", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript, mode: duration, clips: items.filter((x) => selected.includes(x.id)) }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo crear el trabajo");
+      setPipelineMessage(data.dispatched ? `Trabajo ${data.job.id.slice(0, 8)} enviado al renderer.` : `Trabajo ${data.job.id.slice(0, 8)} guardado en cola. Configura el renderer para procesarlo.`);
+    } catch (error) { setPipelineMessage(error instanceof Error ? error.message : "Error al enviar al pipeline"); }
+  }
+
+  function runAnalysis() {
     setProcessing(true);
     window.setTimeout(() => {
       const result = analyze(transcript, duration);
@@ -151,11 +165,17 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
               <input ref={videoInput} className="hidden" type="file" accept="video/*" onChange={(e) => loadVideo(e.target.files?.[0])} />
               <input ref={transcriptInput} className="hidden" type="file" accept=".txt,text/plain" onChange={(e) => loadTranscript(e.target.files?.[0])} />
               {videoUrl && <video src={videoUrl} controls className="mt-4 max-h-[420px] w-full rounded-2xl border border-border bg-black" />}
-              <textarea className="textarea mt-4 min-h-52" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder={"Pega la transcripción aquí…\n\nEjemplo:\nNadie esperaba que yo dijera esto…\nAquí fue donde todo cambió…"} />
+              <textarea className="textarea mt-4 min-h-52" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder={"Pega la transcripción aquí…
+
+Ejemplo:
+Nadie esperaba que yo dijera esto…
+Aquí fue donde todo cambió…"} />
               <div className="mt-3 flex flex-wrap gap-2">
                 {([["viral", "🔥 Máximo potencial"], ["short", "📱 Shorts 20–60s"], ["long", "🎬 Clips 60–180s"]] as const).map(([v, label]) => <button key={v} onClick={() => setDuration(v)} className={`btn ${duration === v ? "btn-primary" : "btn-ghost"}`}>{label}</button>)}
               </div>
-              <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar y seleccionar mejores momentos"}</button>\n              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length} className="btn btn-ghost mt-2 w-full"><Upload className="size-4" /> Enviar selección al pipeline real</button>\n              <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>
+              <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar y seleccionar mejores momentos"}</button>
+              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length} className="btn btn-ghost mt-2 w-full"><Upload className="size-4" /> Enviar selección al pipeline real</button>
+              <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>
             </div>
           </section>
 
