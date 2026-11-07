@@ -37,6 +37,8 @@ import { Route as ClipperRegisterClipRouteImport } from './routes/clipper/regist
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronSyncRouteImport } from './routes/api/cron/sync'
 import { Route as ApiTiktokCallbackRouteImport } from './routes/api/tiktok/callback'
+import { Route as ApiPipelineHealthRouteImport } from './routes/api/pipeline/health'
+import { Route as ApiPipelineJobsRouteImport } from './routes/api/pipeline/jobs'
 
 const AccesoRoute = AccesoRouteImport.update({
   id: '/acceso',
@@ -178,6 +180,8 @@ const ApiTiktokCallbackRoute = ApiTiktokCallbackRouteImport.update({
   path: '/api/tiktok/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPipelineHealthRoute = ApiPipelineHealthRouteImport.update({ id: '/api/pipeline/health', path: '/api/pipeline/health', getParentRoute: () => rootRouteImport } as any)
+const ApiPipelineJobsRoute = ApiPipelineJobsRouteImport.update({ id: '/api/pipeline/jobs', path: '/api/pipeline/jobs', getParentRoute: () => rootRouteImport } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -208,6 +212,8 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
   '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
+  '/api/pipeline/health': typeof ApiPipelineHealthRoute
+  '/api/pipeline/jobs': typeof ApiPipelineJobsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -300,6 +306,8 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/sync'
     | '/api/tiktok/callback'
+    | '/api/pipeline/health'
+    | '/api/pipeline/jobs'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -329,6 +337,8 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/sync'
     | '/api/tiktok/callback'
+    | '/api/pipeline/health'
+    | '/api/pipeline/jobs'
   id:
     | '__root__'
     | '/'
@@ -359,6 +369,8 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/sync'
     | '/api/tiktok/callback'
+    | '/api/pipeline/health'
+    | '/api/pipeline/jobs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -377,6 +389,8 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronSyncRoute: typeof ApiCronSyncRoute
   ApiTiktokCallbackRoute: typeof ApiTiktokCallbackRoute
+  ApiPipelineHealthRoute: typeof ApiPipelineHealthRoute
+  ApiPipelineJobsRoute: typeof ApiPipelineJobsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -577,6 +591,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTiktokCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/pipeline/health': { id: '/api/pipeline/health'; path: '/api/pipeline/health'; fullPath: '/api/pipeline/health'; preLoaderRoute: typeof ApiPipelineHealthRouteImport; parentRoute: typeof rootRouteImport }
+    '/api/pipeline/jobs': { id: '/api/pipeline/jobs'; path: '/api/pipeline/jobs'; fullPath: '/api/pipeline/jobs'; preLoaderRoute: typeof ApiPipelineJobsRouteImport; parentRoute: typeof rootRouteImport }
   }
 }
 
@@ -639,6 +655,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronSyncRoute: ApiCronSyncRoute,
   ApiTiktokCallbackRoute: ApiTiktokCallbackRoute,
+  ApiPipelineHealthRoute: ApiPipelineHealthRoute,
+  ApiPipelineJobsRoute: ApiPipelineJobsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
