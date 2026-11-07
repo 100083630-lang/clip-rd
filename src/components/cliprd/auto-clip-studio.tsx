@@ -166,11 +166,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
               <input ref={videoInput} className="hidden" type="file" accept="video/*" onChange={(e) => loadVideo(e.target.files?.[0])} />
               <input ref={transcriptInput} className="hidden" type="file" accept=".txt,text/plain" onChange={(e) => loadTranscript(e.target.files?.[0])} />
               {videoUrl && <video src={videoUrl} controls className="mt-4 max-h-[420px] w-full rounded-2xl border border-border bg-black" />}
-              <textarea className="textarea mt-4 min-h-52" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder={"Pega la transcripción aquí…
-
-Ejemplo:
-Nadie esperaba que yo dijera esto…
-Aquí fue donde todo cambió…"} />
+              <textarea className="textarea mt-4 min-h-52" value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Pega la transcripcion aqui... Ejemplo: Nadie esperaba que yo dijera esto..." />
               <div className="mt-3 flex flex-wrap gap-2">
                 {([["viral", "🔥 Máximo potencial"], ["short", "📱 Shorts 20–60s"], ["long", "🎬 Clips 60–180s"]] as const).map(([v, label]) => <button key={v} onClick={() => setDuration(v)} className={`btn ${duration === v ? "btn-primary" : "btn-ghost"}`}>{label}</button>)}
               </div>
