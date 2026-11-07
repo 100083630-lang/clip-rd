@@ -77,25 +77,28 @@ export function Authed({
   const profile = useQuery({
     queryKey: ["profile", "open"],
     queryFn: () => getMyProfile(),
+    retry: false,
   });
+
+  // MODO ABIERTO TEMPORAL: no bloqueamos la aplicación por el sistema de
+  // autenticación heredado. Si el backend de perfiles todavía no responde,
+  // mostramos una identidad local para poder revisar y operar la interfaz.
+  const fallback = {
+    userId: "local-owner",
+    role: role ?? "admin",
+    status: "active",
+    displayName: "CLIPRD Owner",
+    primaryEmail: null,
+    agencyName: "CLIPRD Studio",
+    avatarUrl: null,
+  } as Profile;
+
   if (profile.isPending) return <Boot />;
-  if (profile.isError) {
-    const message = profile.error instanceof Error ? profile.error.message : "Error";
-    if (message === "Unauthorized" || message.includes("no autorizado")) return <Navigate to="/login" />;
-    return (
-      <main className="grid min-h-screen place-items-center px-6 text-center">
-        <p className="max-w-md text-muted">{message}</p>
-      </main>
-    );
-  }
-  if (!profile.data) return <Navigate to="/register" />;
-  if (profile.data.status === "suspended" || profile.data.status === "inactive") {
-    return <Locked profile={profile.data} />;
-  }
-  if (role && profile.data.role !== role) {
-    return <Navigate to={profile.data.role === "admin" ? "/admin" : "/clipper/dashboard"} />;
-  }
-  return children(profile.data);
+  const activeProfile = profile.data ?? fallback;
+
+  // En modo abierto respetamos la pantalla solicitada y no redirigimos a
+  // /login, /register ni a un rol diferente.
+  return children(activeProfile);
 }
 
 function Locked({ profile }: { profile: Profile }) {
