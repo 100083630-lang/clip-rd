@@ -55,14 +55,16 @@ async function ensureBucket() {
   return true;
 }
 async function upload(file, objectName) {
-  if (!await ensureBucket()) return null;
+  if (!supabaseUrl || !serviceKey) throw new Error("Renderer requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+  if (!await ensureBucket()) throw new Error("Storage bucket is unavailable.");
   const bytes = await (await import("node:fs/promises")).readFile(file);
   const headers = { authorization: "Bearer " + serviceKey, apikey: serviceKey, "content-type": "video/mp4", "x-upsert": "true" };
   const put = await fetch(supabaseUrl + "/storage/v1/object/" + encodeURIComponent(bucket) + "/" + objectName.split("/").map(encodeURIComponent).join("/"), { method: "POST", headers, body: bytes });
   if (!put.ok) throw new Error("Storage upload failed: " + put.status);
   const signed = await fetch(supabaseUrl + "/storage/v1/object/sign/" + encodeURIComponent(bucket) + "/" + objectName.split("/").map(encodeURIComponent).join("/"), { method: "POST", headers: { authorization: "Bearer " + serviceKey, apikey: serviceKey, "content-type": "application/json" }, body: JSON.stringify({ expiresIn: 60 * 60 * 24 * 7 }) });
-  if (!signed.ok) return null;
+  if (!signed.ok) throw new Error("Storage could not create a signed download URL: " + signed.status);
   const data = await signed.json();
+  if (typeof data.signedURL !== "string") throw new Error("Storage returned no signed download URL.");
   return supabaseUrl + "/storage/v1" + data.signedURL;
 }
 async function render(job) {
@@ -94,7 +96,8 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, service: "cliprd-renderer" });
     if (req.method !== "POST" || req.url !== "/jobs") return send(res, 404, { error: "Not found" });
-    if (token && req.headers.authorization !== "Bearer " + token) return send(res, 401, { error: "Unauthorized" });
+    if (!token) return send(res, 503, { error: "Renderer token is not configured." });
+    if (req.headers.authorization !== "Bearer " + token) return send(res, 401, { error: "Unauthorized" });
     const job = await readJson(req);
     const result = await render(job);
     return send(res, 200, { ok: true, jobId: job.id, ...result });
