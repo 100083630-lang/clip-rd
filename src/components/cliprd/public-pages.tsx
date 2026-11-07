@@ -48,31 +48,13 @@ function cleanInviteCode(raw: string) {
 
 // ── HOMEPAGE / PÁGINA PÚBLICA PRINCIPAL ────────────────────────────────
 export function HomePage() {
-  const { user, isPending } = useCurrentUserState();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isPending && user) {
-      navigate({ to: "/register" });
-    }
-  }, [user, isPending, navigate]);
-
-  if (isPending) return <div style={{ padding: 24 }}>Cargando...</div>;
-
-  return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24 }}>
-      <h1>CLIPRD</h1>
-      <p>Tu ficha de registro para trabajar en CLIPRD.</p>
-      <Link to="/login" style={{ display: "block", textAlign: "center", padding: 14, background: "#111", color: "#fff", borderRadius: 10, textDecoration: "none", marginBottom: 12 }}>
-        Entrar
-      </Link>
-      <Link to="/register" style={{ display: "block", textAlign: "center", padding: 14, border: "1px solid #111", borderRadius: 10, textDecoration: "none", color: "#111" }}>
-        Crear cuenta
-      </Link>
-    </div>
-  );
+  // CLIPRD se encuentra temporalmente en modo abierto mientras se reconstruye
+  // la autenticación. Entramos directamente al panel de trabajo.
+  if (typeof window !== "undefined") {
+    window.location.replace("/clipper/dashboard");
+  }
+  return <div style={{ padding: 24 }}>Abriendo CLIPRD Studio…</div>;
 }
-
 // Alias para que no falle ningún import viejo
 export const PublicHomePage = HomePage;
 
