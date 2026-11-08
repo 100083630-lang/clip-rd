@@ -214,6 +214,9 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
   '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
+  '/api/pipeline/health': typeof ApiPipelineHealthRoute
+  '/api/pipeline/jobs': typeof ApiPipelineJobsRoute
+  '/api/pipeline/upload': typeof ApiPipelineUploadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -243,6 +246,9 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
   '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
+  '/api/pipeline/health': typeof ApiPipelineHealthRoute
+  '/api/pipeline/jobs': typeof ApiPipelineJobsRoute
+  '/api/pipeline/upload': typeof ApiPipelineUploadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -274,6 +280,9 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
   '/api/tiktok/callback': typeof ApiTiktokCallbackRoute
+  '/api/pipeline/health': typeof ApiPipelineHealthRoute
+  '/api/pipeline/jobs': typeof ApiPipelineJobsRoute
+  '/api/pipeline/upload': typeof ApiPipelineUploadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -306,6 +315,9 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/sync'
     | '/api/tiktok/callback'
+    | '/api/pipeline/health'
+    | '/api/pipeline/jobs'
+    | '/api/pipeline/upload'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -335,6 +347,9 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/sync'
     | '/api/tiktok/callback'
+    | '/api/pipeline/health'
+    | '/api/pipeline/jobs'
+    | '/api/pipeline/upload'
   id:
     | '__root__'
     | '/'
@@ -365,6 +380,9 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/cron/sync'
     | '/api/tiktok/callback'
+    | '/api/pipeline/health'
+    | '/api/pipeline/jobs'
+    | '/api/pipeline/upload'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -584,6 +602,27 @@ declare module '@tanstack/react-router' {
       path: '/api/tiktok/callback'
       fullPath: '/api/tiktok/callback'
       preLoaderRoute: typeof ApiTiktokCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/pipeline/health': {
+      id: '/api/pipeline/health'
+      path: '/api/pipeline/health'
+      fullPath: '/api/pipeline/health'
+      preLoaderRoute: typeof ApiPipelineHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/pipeline/jobs': {
+      id: '/api/pipeline/jobs'
+      path: '/api/pipeline/jobs'
+      fullPath: '/api/pipeline/jobs'
+      preLoaderRoute: typeof ApiPipelineJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/pipeline/upload': {
+      id: '/api/pipeline/upload'
+      path: '/api/pipeline/upload'
+      fullPath: '/api/pipeline/upload'
+      preLoaderRoute: typeof ApiPipelineUploadRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
