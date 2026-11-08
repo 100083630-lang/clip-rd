@@ -81,7 +81,7 @@ async function listJobs(limit = 20) {
 
 function rendererEndpoint(value: string) {
   const base = value.trim().replace(/\/+$/, "");
-  return base.endsWith("/render") ? base : `${base}/render`;
+  return base.endsWith("/jobs") ? base : `${base}/jobs`;
 }
 
 async function dispatch(job: ClipJob) {
@@ -98,7 +98,7 @@ async function dispatch(job: ClipJob) {
         ...(process.env.CLIPRD_RENDERER_TOKEN ? { Authorization: `Bearer ${process.env.CLIPRD_RENDERER_TOKEN}` } : {}),
       },
       body: JSON.stringify({
-        jobId: job.id,
+        id: job.id,
         sourceUrl: job.sourceUrl,
         transcript: job.transcript,
         mode: job.mode,
@@ -109,9 +109,9 @@ async function dispatch(job: ClipJob) {
     let payload: any = null;
     try { payload = text ? JSON.parse(text) : null; } catch {}
     if (!response.ok) throw new Error(payload?.error || `Renderer rejected job (${response.status})`);
-    if (payload?.outputs && Array.isArray(payload.outputs) && payload.outputs[0]?.url) {
+    if (payload?.outputs && Array.isArray(payload.outputs) && payload.outputs.some((x: any) => x?.url)) {
       job.status = "ready";
-      job.outputUrl = String(payload.outputs[0].url);
+      job.outputUrl = String(payload.outputs.find((x: any) => x?.url)?.url);
       job.updatedAt = new Date().toISOString();
       await save(job);
     }
@@ -157,12 +157,12 @@ export const Route = createFileRoute("/api/pipeline/jobs")({
           await save(job);
           try {
             const dispatch = await dispatch(job);
-            if (dispatch.dispatched) {
+            if (dispatch.dispatched && job.status === "queued") {
               job.status = "processing";
               job.updatedAt = new Date().toISOString();
               await save(job);
             }
-            return json({ job: await getJob(job.id) ?? job, ...dispatch }, 202);
+            return json({ job: await getJob(job.id) ?? job, ...dispatch }, job.status === "ready" ? 200 : 202);
           } catch (error) {
             job.status = "failed";
             job.error = error instanceof Error ? error.message : "Unknown renderer error";
