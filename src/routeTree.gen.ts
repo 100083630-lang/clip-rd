@@ -37,6 +37,9 @@ import { Route as ClipperRegisterClipRouteImport } from './routes/clipper/regist
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronSyncRouteImport } from './routes/api/cron/sync'
 import { Route as ApiTiktokCallbackRouteImport } from './routes/api/tiktok/callback'
+import { Route as ApiPipelineHealthRouteImport } from './routes/api/pipeline/health'
+import { Route as ApiPipelineJobsRouteImport } from './routes/api/pipeline/jobs'
+import { Route as ApiPipelineUploadRouteImport } from './routes/api/pipeline/upload'
 
 const AccesoRoute = AccesoRouteImport.update({
   id: '/acceso',
@@ -178,6 +181,9 @@ const ApiTiktokCallbackRoute = ApiTiktokCallbackRouteImport.update({
   path: '/api/tiktok/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPipelineHealthRoute = ApiPipelineHealthRouteImport.update({ id: '/api/pipeline/health', path: '/api/pipeline/health', getParentRoute: () => rootRouteImport } as any)
+const ApiPipelineJobsRoute = ApiPipelineJobsRouteImport.update({ id: '/api/pipeline/jobs', path: '/api/pipeline/jobs', getParentRoute: () => rootRouteImport } as any)
+const ApiPipelineUploadRoute = ApiPipelineUploadRouteImport.update({ id: '/api/pipeline/upload', path: '/api/pipeline/upload', getParentRoute: () => rootRouteImport } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -377,6 +383,9 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronSyncRoute: typeof ApiCronSyncRoute
   ApiTiktokCallbackRoute: typeof ApiTiktokCallbackRoute
+  ApiPipelineHealthRoute: typeof ApiPipelineHealthRoute
+  ApiPipelineJobsRoute: typeof ApiPipelineJobsRoute
+  ApiPipelineUploadRoute: typeof ApiPipelineUploadRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -639,6 +648,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronSyncRoute: ApiCronSyncRoute,
   ApiTiktokCallbackRoute: ApiTiktokCallbackRoute,
+  ApiPipelineHealthRoute: ApiPipelineHealthRoute,
+  ApiPipelineJobsRoute: ApiPipelineJobsRoute,
+  ApiPipelineUploadRoute: ApiPipelineUploadRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
