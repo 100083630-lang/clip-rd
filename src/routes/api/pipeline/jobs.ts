@@ -79,19 +79,46 @@ async function listJobs(limit = 20) {
   }));
 }
 
+function rendererEndpoint(value: string) {
+  const base = value.trim().replace(/\/+$/, "");
+  return base.endsWith("/render") ? base : `${base}/render`;
+}
+
 async function dispatch(job: ClipJob) {
   const renderer = process.env.CLIPRD_RENDERER_URL;
   if (!renderer) return { dispatched: false, message: "Renderer not configured. Job is safely queued." };
-  const response = await fetch(renderer, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(process.env.CLIPRD_RENDERER_TOKEN ? { Authorization: `Bearer ${process.env.CLIPRD_RENDERER_TOKEN}` } : {}),
-    },
-    body: JSON.stringify(job),
-  });
-  if (!response.ok) throw new Error(`Renderer rejected job (${response.status})`);
-  return { dispatched: true };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 55_000);
+  try {
+    const response = await fetch(rendererEndpoint(renderer), {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.CLIPRD_RENDERER_TOKEN ? { Authorization: `Bearer ${process.env.CLIPRD_RENDERER_TOKEN}` } : {}),
+      },
+      body: JSON.stringify({
+        jobId: job.id,
+        sourceUrl: job.sourceUrl,
+        transcript: job.transcript,
+        mode: job.mode,
+        clips: job.clips,
+      }),
+    });
+    const text = await response.text();
+    let payload: any = null;
+    try { payload = text ? JSON.parse(text) : null; } catch {}
+    if (!response.ok) throw new Error(payload?.error || `Renderer rejected job (${response.status})`);
+    if (payload?.outputs && Array.isArray(payload.outputs) && payload.outputs[0]?.url) {
+      job.status = "ready";
+      job.outputUrl = String(payload.outputs[0].url);
+      job.updatedAt = new Date().toISOString();
+      await save(job);
+    }
+    return { dispatched: true, rendererResponse: payload ?? null };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export const Route = createFileRoute("/api/pipeline/jobs")({
@@ -117,7 +144,7 @@ export const Route = createFileRoute("/api/pipeline/jobs")({
           const job: ClipJob = {
             id: randomUUID(),
             status: "queued",
-            sourceUrl: typeof body.sourceUrl === "string" ? body.sourceUrl : null,
+            sourceUrl: typeof body.sourceUrl === "string" && /^https?:\/\//i.test(body.sourceUrl) ? body.sourceUrl : null,
             transcript: typeof body.transcript === "string" ? body.transcript : "",
             mode: body.mode === "short" || body.mode === "long" ? body.mode : "viral",
             clips: Array.isArray(body.clips) ? body.clips : [],
@@ -126,6 +153,7 @@ export const Route = createFileRoute("/api/pipeline/jobs")({
             createdAt: now,
             updatedAt: now,
           };
+          if (!job.sourceUrl) return json({ error: "sourceUrl must be a valid http(s) URL accessible to the renderer" }, 400);
           await save(job);
           try {
             const dispatch = await dispatch(job);
@@ -134,7 +162,7 @@ export const Route = createFileRoute("/api/pipeline/jobs")({
               job.updatedAt = new Date().toISOString();
               await save(job);
             }
-            return json({ job, ...dispatch }, 202);
+            return json({ job: await getJob(job.id) ?? job, ...dispatch }, 202);
           } catch (error) {
             job.status = "failed";
             job.error = error instanceof Error ? error.message : "Unknown renderer error";
