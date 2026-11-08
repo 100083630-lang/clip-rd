@@ -49,36 +49,36 @@ function run(cmd, args) {
     child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-2000) || cmd + " failed")));
   });
 }
-function isYouTube(url) {
-  return /youtube\.com|youtu\.be|music\.youtube\.com/i.test(url);
-}
+function isYouTube(url) { return /youtube\.com|youtu\.be|music\.youtube\.com/i.test(url); }
 function getVideoId(url) {
   try {
     const u = new URL(url);
-    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1).split("?")[0];
     return u.searchParams.get("v") || "";
   } catch { return ""; }
 }
-async function downloadViaPiped(url, destination) {
-  const id = getVideoId(url);
-  if (!id) throw new Error("No video id");
-  const instances = ["https://piped.video", "https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de"];
+async function downloadUrlToFile(fileUrl, destination) {
+  const dl = await fetch(fileUrl, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } });
+  if (!dl.ok || !dl.body) throw new Error("Download " + dl.status);
+  await pipeline(Readable.fromWeb(dl.body), createWriteStream(destination));
+}
+async function downloadViaInvidious(id, destination) {
+  const apis = ["https://inv.nadeko.net", "https://invidious.privacyredirect.com", "https://yt.artemislena.eu", "https://invidious.flokinet.to", "https://inv.us.projectsegfau.lt"];
   let lastErr = "";
-  for (const base of instances) {
+  for (const base of apis) {
     try {
-      const res = await fetch(base + "/streams/" + id, { headers: { "user-agent": "Mozilla/5.0" } });
-      const data = await res.json();
-      const streams = [...(data.audioStreams || []), ...(data.videoStreams || [])];
-      const combined = (data.videoStreams || []).find(s => s.mimeType && s.mimeType.includes("mp4") && s.url);
-      const pick = combined || streams.find(s => s.url);
-      if (!pick?.url) { lastErr = "no stream in " + base; continue; }
-      const dl = await fetch(pick.url, { headers: { "user-agent": "Mozilla/5.0" } });
-      if (!dl.ok || !dl.body) throw new Error("Piped download " + dl.status);
-      await pipeline(Readable.fromWeb(dl.body), createWriteStream(destination));
+      const res = await fetch(base + "/api/v1/videos/" + id, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0" } });
+      const text = await res.text();
+      if (!res.ok || text.trim().startsWith("<")) { lastErr = base + " HTML " + res.status; continue; }
+      const data = JSON.parse(text);
+      const formats = [...(data.adaptiveFormats || []), ...(data.formatStreams || [])];
+      const pick = formats.find(f => f.url && (f.container === "mp4" || (f.mimeType||"").includes("mp4"))) || formats.find(f => f.url);
+      if (!pick?.url) { lastErr = base + " no format"; continue; }
+      await downloadUrlToFile(pick.url, destination);
       return;
     } catch (e) { lastErr = String(e).slice(0, 300); }
   }
-  throw new Error("Piped failed: " + lastErr);
+  throw new Error("V6 Invidious failed: " + lastErr);
 }
 async function downloadWithYtDlp(url, destination) {
   const base = (client) => ["--no-playlist", "--js-runtimes", "node:deno", "--extractor-args", "youtube:player_client=" + client, "--extractor-args", "youtube:player_skip=webpage,configs", "--no-check-certificates", "--geo-bypass", "--no-warnings", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url];
@@ -87,7 +87,9 @@ async function downloadWithYtDlp(url, destination) {
     try { await run("yt-dlp", base(clients[i])); return; }
     catch (e) { console.log("yt-dlp " + clients[i] + " failed:", String(e).slice(0, 300)); }
   }
-  await downloadViaPiped(url, destination);
+  const id = getVideoId(url);
+  if (!id) throw new Error("V6 No video id");
+  await downloadViaInvidious(id, destination);
 }
 async function download(url, destination) {
   if (isYouTube(url)) { await downloadWithYtDlp(url, destination); return; }
@@ -135,9 +137,7 @@ async function render(job) {
       outputs.push({ index: i + 1, url, start, end });
     }
     return { outputs };
-  } finally {
-    await rm(work, { recursive: true, force: true });
-  }
+  } finally { await rm(work, { recursive: true, force: true }); }
 }
 const server = http.createServer(async (req, res) => {
   try {
@@ -147,8 +147,6 @@ const server = http.createServer(async (req, res) => {
     const job = await readJson(req);
     const result = await render(job);
     return send(res, 200, { ok: true, jobId: job.id, ...result });
-  } catch (error) {
-    return send(res, 500, { error: error instanceof Error ? error.message : "Renderer failed" });
-  }
+  } catch (error) { return send(res, 500, { error: error instanceof Error ? error.message : "Renderer failed" }); }
 });
 server.listen(port, "0.0.0.0", () => console.log("CLIPRD renderer listening on " + port));
