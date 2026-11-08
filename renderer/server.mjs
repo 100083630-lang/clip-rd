@@ -58,38 +58,66 @@ function getVideoId(url) {
   } catch { return ""; }
 }
 async function downloadUrlToFile(fileUrl, destination) {
-  const dl = await fetch(fileUrl, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } });
+  const dl = await fetch(fileUrl, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36" } });
   if (!dl.ok || !dl.body) throw new Error("Download " + dl.status);
   await pipeline(Readable.fromWeb(dl.body), createWriteStream(destination));
 }
-async function downloadViaInvidious(id, destination) {
-  const apis = ["https://inv.nadeko.net", "https://invidious.privacyredirect.com", "https://yt.artemislena.eu", "https://invidious.flokinet.to", "https://inv.us.projectsegfau.lt"];
+// V7: Cobalt - servicio que descarga YouTube por nosotros
+async function downloadViaCobalt(url, destination) {
+  const apis = ["https://api.cobalt.tools/api/json", "https://cobalt.api.timelessnesses.me/api/json", "https://api.cobalt.tools"];
+  let lastErr = "";
+  for (const api of apis) {
+    try {
+      const res = await fetch(api, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json", "user-agent": "Mozilla/5.0" },
+        body: JSON.stringify({ url, vCodec: "h264", vQuality: "720", filenamePattern: "classic" })
+      });
+      const text = await res.text();
+      if (!res.ok || text.trim().startsWith("<")) { lastErr = api + " HTTP " + res.status + " " + text.slice(0,120); continue; }
+      const data = JSON.parse(text);
+      const fileUrl = data.url || data.downloadUrl;
+      if (!fileUrl) { lastErr = api + " sin url: " + text.slice(0,200); continue; }
+      await downloadUrlToFile(fileUrl, destination);
+      return;
+    } catch (e) { lastErr = api + " " + String(e).slice(0,300); }
+  }
+  throw new Error("V7 Cobalt failed: " + lastErr);
+}
+async function downloadViaPiped(id, destination) {
+  const apis = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://pipedapi.leptons.xyz"];
   let lastErr = "";
   for (const base of apis) {
     try {
-      const res = await fetch(base + "/api/v1/videos/" + id, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0" } });
+      const res = await fetch(base + "/streams/" + id, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0" } });
       const text = await res.text();
       if (!res.ok || text.trim().startsWith("<")) { lastErr = base + " HTML " + res.status; continue; }
       const data = JSON.parse(text);
-      const formats = [...(data.adaptiveFormats || []), ...(data.formatStreams || [])];
-      const pick = formats.find(f => f.url && (f.container === "mp4" || (f.mimeType||"").includes("mp4"))) || formats.find(f => f.url);
-      if (!pick?.url) { lastErr = base + " no format"; continue; }
+      const candidates = [];
+      if (data.videoStreams) for (const s of data.videoStreams) if (s.url) candidates.push(s);
+      if (data.audioStreams) for (const s of data.audioStreams) if (s.url) candidates.push(s);
+      const pick = candidates.find(s => (s.mimeType||"").includes("mp4") && s.url) || candidates[0];
+      if (!pick?.url) { lastErr = base + " no url"; continue; }
       await downloadUrlToFile(pick.url, destination);
       return;
-    } catch (e) { lastErr = String(e).slice(0, 300); }
+    } catch (e) { lastErr = base + " " + String(e).slice(0,200); }
   }
-  throw new Error("V6 Invidious failed: " + lastErr);
+  throw new Error("V7 Piped failed: " + lastErr);
 }
 async function downloadWithYtDlp(url, destination) {
-  const base = (client) => ["--no-playlist", "--js-runtimes", "node:deno", "--extractor-args", "youtube:player_client=" + client, "--extractor-args", "youtube:player_skip=webpage,configs", "--no-check-certificates", "--geo-bypass", "--no-warnings", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url];
-  const clients = ["android", "mediaconnect", "tv", "web_embedded", "ios", "tv_embedded"];
+  const base = (client) => ["--no-playlist", "--js-runtimes", "node:deno", "--force-ipv4", "--extractor-args", "youtube:player_client=" + client, "--extractor-args", "youtube:player_skip=webpage,configs", "--no-check-certificates", "--geo-bypass", "--no-warnings", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url];
+  const clients = ["android", "mediaconnect", "tv", "web_embedded", "ios"];
   for (let i = 0; i < clients.length; i++) {
     try { await run("yt-dlp", base(clients[i])); return; }
-    catch (e) { console.log("yt-dlp " + clients[i] + " failed:", String(e).slice(0, 300)); }
+    catch (e) { console.log("yt-dlp " + clients[i] + " failed"); }
   }
+  // 1. Cobalt
+  try { await downloadViaCobalt(url, destination); return; }
+  catch (e) { console.log(String(e).slice(0,400)); }
+  // 2. Piped
   const id = getVideoId(url);
-  if (!id) throw new Error("V6 No video id");
-  await downloadViaInvidious(id, destination);
+  if (!id) throw new Error("V7 No video id");
+  await downloadViaPiped(id, destination);
 }
 async function download(url, destination) {
   if (isYouTube(url)) { await downloadWithYtDlp(url, destination); return; }
