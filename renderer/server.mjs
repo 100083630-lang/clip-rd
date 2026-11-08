@@ -52,52 +52,42 @@ function run(cmd, args) {
 function isYouTube(url) {
   return /youtube\.com|youtu\.be|music\.youtube\.com/i.test(url);
 }
-async function downloadWithCobalt(url, destination) {
-  const instances = [
-    "https://api.cobalt.tools/api/json",
-    "https://cobalt-api.kwiatekmiki.com/api/json",
-    "https://api.cobalt.tools/"
-  ];
+function getVideoId(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1);
+    return u.searchParams.get("v") || "";
+  } catch { return ""; }
+}
+async function downloadViaPiped(url, destination) {
+  const id = getVideoId(url);
+  if (!id) throw new Error("No video id");
+  const instances = ["https://piped.video", "https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de"];
   let lastErr = "";
-  for (const api of instances) {
-    for (const body of [
-      { url, downloadMode: "auto", filenameStyle: "basic", videoQuality: "720", youtubeVideoCodec: "h264" },
-      { url, vCodec: "h264", vQuality: "720", filenamePattern: "basic" }
-    ]) {
-      try {
-        const res = await fetch(api, {
-          method: "POST",
-          headers: { "content-type": "application/json", accept: "application/json" },
-          body: JSON.stringify(body)
-        });
-        const text = await res.text();
-        const data = JSON.parse(text || "{}");
-        if (!data.url) { lastErr = text.slice(0, 300); continue; }
-        const dl = await fetch(data.url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
-        if (!dl.ok || !dl.body) throw new Error("Cobalt download failed: " + dl.status);
-        await pipeline(Readable.fromWeb(dl.body), createWriteStream(destination));
-        return;
-      } catch (e) { lastErr = String(e).slice(0, 300); }
-    }
+  for (const base of instances) {
+    try {
+      const res = await fetch(base + "/streams/" + id, { headers: { "user-agent": "Mozilla/5.0" } });
+      const data = await res.json();
+      const streams = [...(data.audioStreams || []), ...(data.videoStreams || [])];
+      const combined = (data.videoStreams || []).find(s => s.mimeType && s.mimeType.includes("mp4") && s.url);
+      const pick = combined || streams.find(s => s.url);
+      if (!pick?.url) { lastErr = "no stream in " + base; continue; }
+      const dl = await fetch(pick.url, { headers: { "user-agent": "Mozilla/5.0" } });
+      if (!dl.ok || !dl.body) throw new Error("Piped download " + dl.status);
+      await pipeline(Readable.fromWeb(dl.body), createWriteStream(destination));
+      return;
+    } catch (e) { lastErr = String(e).slice(0, 300); }
   }
-  throw new Error("Cobalt failed: " + lastErr);
+  throw new Error("Piped failed: " + lastErr);
 }
 async function downloadWithYtDlp(url, destination) {
-  const attempts = [
-    // 1. Android
-    ["--no-playlist", "--js-runtimes", "node:deno", "--extractor-args", "youtube:player_client=android,ios", "--extractor-args", "youtube:player_skip=webpage", "--no-check-certificates", "--geo-bypass", "--user-agent", "com.google.android.youtube/19.09.37 (Linux; U; Android 13; en_US)", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url],
-    // 2. TV - el mas dificil de bloquear por YouTube
-    ["--no-playlist", "--js-runtimes", "node:deno", "--extractor-args", "youtube:player_client=tv,web_safari", "--extractor-args", "youtube:player_skip=webpage", "--no-check-certificates", "--geo-bypass", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url],
-    // 3. TV Embedded
-    ["--no-playlist", "--js-runtimes", "node:deno", "--extractor-args", "youtube:player_client=tv_embedded", "--no-check-certificates", "-f", "mp4/best", "-o", destination, url],
-    // 4. Web con Chrome
-    ["--no-playlist", "--js-runtimes", "node:deno", "--impersonate", "chrome", "-f", "mp4/best", "-o", destination, url]
-  ];
-  for (let i = 0; i < attempts.length; i++) {
-    try { await run("yt-dlp", attempts[i]); return; }
-    catch (e) { console.log("yt-dlp attempt " + (i + 1) + " failed:", String(e).slice(0, 300)); }
+  const base = (client) => ["--no-playlist", "--js-runtimes", "node:deno", "--extractor-args", "youtube:player_client=" + client, "--extractor-args", "youtube:player_skip=webpage,configs", "--no-check-certificates", "--geo-bypass", "--no-warnings", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url];
+  const clients = ["android", "mediaconnect", "tv", "web_embedded", "ios", "tv_embedded"];
+  for (let i = 0; i < clients.length; i++) {
+    try { await run("yt-dlp", base(clients[i])); return; }
+    catch (e) { console.log("yt-dlp " + clients[i] + " failed:", String(e).slice(0, 300)); }
   }
-  await downloadWithCobalt(url, destination);
+  await downloadViaPiped(url, destination);
 }
 async function download(url, destination) {
   if (isYouTube(url)) { await downloadWithYtDlp(url, destination); return; }
