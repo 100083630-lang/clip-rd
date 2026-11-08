@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CLIPRD — Personal Auto Clipper</title>
+<style>
+:root{--bg:#07090d;--panel:#10141c;--panel2:#151a24;--line:#28303d;--text:#f5f7fb;--muted:#98a2b3;--accent:#7c5cff;--good:#27d89a;--bad:#ff5f6d}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at top,#161128 0,#07090d 42%);color:var(--text)}.wrap{max-width:1180px;margin:auto;padding:28px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:28px}.brand{font-weight:900;font-size:25px;letter-spacing:-1px}.brand b{color:#a793ff}.status{font-size:13px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}.card{background:linear-gradient(145deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 20px 80px #0004}h1{font-size:36px;margin:0 0 8px;letter-spacing:-1.4px}.sub{color:var(--muted);line-height:1.55;margin-bottom:22px}label{display:block;font-size:13px;color:#c5cbd6;margin:16px 0 7px}input{width:100%;background:#090c12;border:1px solid var(--line);color:#fff;border-radius:12px;padding:14px;font-size:14px;outline:none}input:focus{border-color:#7c5cff}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}button{border:0;border-radius:12px;padding:13px 16px;font-weight:750;cursor:pointer;background:#252c39;color:#fff}.primary{background:linear-gradient(135deg,#7c5cff,#a85cff)}button:disabled{opacity:.55;cursor:not-allowed}.segments{margin-top:20px;display:grid;gap:9px}.seg{display:grid;grid-template-columns:32px 1fr 1fr 36px;gap:8px;align-items:center;background:#090c12;border:1px solid var(--line);padding:8px;border-radius:12px}.seg input{padding:10px}.remove{background:#301820;color:#ff9aa5;padding:9px}.log{white-space:pre-wrap;background:#07090d;border:1px solid var(--line);padding:14px;border-radius:12px;color:#b8c1cf;font-size:13px;min-height:90px}.output{margin-top:16px;display:grid;gap:10px}.clip{border:1px solid var(--line);border-radius:14px;padding:13px;background:#0a0d13}.clip a{color:#a793ff}.good{color:var(--good)}.note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5}@media(max-width:800px){.grid{grid-template-columns:1fr}.wrap{padding:16px}h1{font-size:30px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div class="brand">CLIP<b>RD</b></div><div id="status" class="status">● Verificando renderer…</div></div>
+  <div class="grid">
+    <main class="card">
+      <h1>Auto Clipper personal</h1>
+      <div class="sub">Pega una URL pública de un video que tengas derecho a procesar. CLIPRD crea segmentos y los envía a tu renderer para generar los MP4 reales.</div>
+      <label>URL del video fuente</label>
+      <input id="sourceUrl" placeholder="https://..." />
+      <div class="row">
+        <div><label>Duración estimada del video (minutos)</label><input id="duration" type="number" min="1" value="60" /></div>
+        <div><label>Duración de cada clip (segundos)</label><input id="clipLength" type="number" min="10" max="180" value="45" /></div>
+      </div>
+      <div class="buttons"><button class="primary" id="auto">✨ Crear selección automática</button><button id="add">＋ Añadir segmento</button></div>
+      <div id="segments" class="segments"></div>
+      <div class="buttons"><button class="primary" id="render">🎬 Renderizar clips reales</button></div>
+      <div class="note">La selección automática de esta versión distribuye segmentos a lo largo del video. Para detectar realmente “los mejores momentos” por audio/transcripción se añade después un módulo de análisis; no voy a fingir que ya existe.</div>
+    </main>
+    <aside class="card">
+      <h2 style="margin-top:0">Estado del trabajo</h2>
+      <div id="log" class="log">Listo para empezar.</div>
+      <div id="output" class="output"></div>
+    </aside>
+  </div>
+</div>
+<script>
+const $=id=>document.getElementById(id); let clips=[];
+function setLog(t){$('log').textContent=t}
+function renderSegments(){const box=$('segments');box.innerHTML='';clips.forEach((c,i)=>{const d=document.createElement('div');d.className='seg';d.innerHTML='<b>'+ (i+1) +'</b><input type="number" value="'+c.start+'" min="0" aria-label="Inicio"><input type="number" value="'+c.end+'" min="1" aria-label="Fin"><button class="remove">×</button>';const [s,e]=d.querySelectorAll('input');s.oninput=()=>clips[i].start=Number(s.value);e.oninput=()=>clips[i].end=Number(e.value);d.querySelector('button').onclick=()=>{clips.splice(i,1);renderSegments()};box.appendChild(d)})}
+$('auto').onclick=()=>{const total=Math.max(60,Number($('duration').value||60)*60);const len=Math.max(10,Number($('clipLength').value||45));const count=Math.min(6,Math.max(3,Math.floor(total/600)));clips=[];for(let i=0;i<count;i++){const center=((i+1)*total)/(count+1);let start=Math.max(0,Math.round(center-len/2));clips.push({start,end:Math.min(total,start+len)})}renderSegments();setLog('Selección automática creada: '+clips.length+' segmentos.')};
+$('add').onclick=()=>{clips.push({start:0,end:45});renderSegments()};
+$('render').onclick=async()=>{const sourceUrl=$('sourceUrl').value.trim();if(!sourceUrl){setLog('❌ Pega una URL del video.');return}if(!clips.length){setLog('❌ Primero crea o añade segmentos.');return}const btn=$('render');btn.disabled=true;setLog('🎬 Enviando trabajo al renderer…');$('output').innerHTML='';try{const r=await fetch('/api/render',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl,clips})});const data=await r.json();if(!r.ok)throw new Error(data.error||'Error '+r.status);setLog('✅ Render terminado.');(data.outputs||[]).forEach(x=>{const d=document.createElement('div');d.className='clip';d.innerHTML='<b class="good">Clip '+x.index+' listo</b><br>'+x.start+'s → '+x.end+'s<br>'+(x.url?'<a href="'+x.url+'" target="_blank" rel="noopener">Abrir clip</a>':'Renderizado sin URL pública');$('output').appendChild(d)})}catch(e){setLog('❌ '+e.message)}finally{btn.disabled=false}};
+async function health(){try{const r=await fetch('/api/health');const d=await r.json();$('status').textContent=d.ok?'● Renderer conectado':'● Renderer no disponible';$('status').style.color=d.ok?'#27d89a':'#ff5f6d'}catch{$('status').textContent='● Error de conexión';$('status').style.color='#ff5f6d'}}health();setInterval(health,30000);$('auto').click();
+</script>
+</body></html>
