@@ -40,8 +40,36 @@ function ffmpeg(args) {
     child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-2000) || "ffmpeg failed")));
   });
 }
+function run(cmd, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.on("error", reject);
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-2000) || cmd + " failed")));
+  });
+}
+function isYouTube(url) {
+  return /youtube\.com|youtu\.be|music\.youtube\.com/i.test(url);
+}
+async function downloadWithYtDlp(url, destination) {
+  // Intento 1: con impersonacion de navegador - lo que evita el 429
+  try {
+    await run("yt-dlp", ["--no-playlist", "--impersonate", "chrome", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url]);
+    return;
+  } catch (e1) {
+    console.log("yt-dlp attempt 1 failed, retrying:", String(e1).slice(0, 300));
+  }
+  // Intento 2: mas simple, sin impersonate
+  await run("yt-dlp", ["--no-playlist", "-f", "mp4/best", "-o", destination, url]);
+}
 async function download(url, destination) {
-  const response = await fetch(url, { redirect: "follow" });
+  // AUTOMATICO: si es YouTube, usar yt-dlp. Si no, fetch normal.
+  if (isYouTube(url)) {
+    await downloadWithYtDlp(url, destination);
+    return;
+  }
+  const response = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
   if (!response.ok || !response.body) throw new Error("Source download failed: " + response.status);
   await pipeline(Readable.fromWeb(response.body), createWriteStream(destination));
 }
