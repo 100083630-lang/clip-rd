@@ -52,19 +52,37 @@ function run(cmd, args) {
 function isYouTube(url) {
   return /youtube\.com|youtu\.be|music\.youtube\.com/i.test(url);
 }
+async function downloadWithCobalt(url, destination) {
+  const res = await fetch("https://api.cobalt.tools/api/json", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ url, vCodec: "h264", vQuality: "720", filenamePattern: "basic" })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.url) throw new Error("Cobalt failed: " + JSON.stringify(data).slice(0, 300));
+  const dl = await fetch(data.url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
+  if (!dl.ok || !dl.body) throw new Error("Cobalt download failed: " + dl.status);
+  await pipeline(Readable.fromWeb(dl.body), createWriteStream(destination));
+}
 async function downloadWithYtDlp(url, destination) {
-  // Intento 1: con impersonacion de navegador - lo que evita el 429
+  // Intento 1: Android - YouTube casi nunca bloquea este cliente
   try {
-    await run("yt-dlp", ["--no-playlist", "--impersonate", "chrome", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url]);
+    await run("yt-dlp", ["--no-playlist", "--js-runtimes", "node:deno", "--extractor-args", "youtube:player_client=android,ios", "--extractor-args", "youtube:player_skip=webpage", "--no-check-certificates", "--geo-bypass", "--user-agent", "com.google.android.youtube/19.09.37 (Linux; U; Android 13; en_US)", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url]);
     return;
   } catch (e1) {
-    console.log("yt-dlp attempt 1 failed, retrying:", String(e1).slice(0, 300));
+    console.log("yt-dlp android failed:", String(e1).slice(0, 400));
   }
-  // Intento 2: mas simple, sin impersonate
-  await run("yt-dlp", ["--no-playlist", "-f", "mp4/best", "-o", destination, url]);
+  // Intento 2: Web con chrome
+  try {
+    await run("yt-dlp", ["--no-playlist", "--js-runtimes", "node:deno", "--impersonate", "chrome", "-f", "mp4/best", "-o", destination, url]);
+    return;
+  } catch (e2) {
+    console.log("yt-dlp web failed, trying Cobalt:", String(e2).slice(0, 400));
+  }
+  // Intento 3: Cobalt - otro servidor que baja por nosotros
+  await downloadWithCobalt(url, destination);
 }
 async function download(url, destination) {
-  // AUTOMATICO: si es YouTube, usar yt-dlp. Si no, fetch normal.
   if (isYouTube(url)) {
     await downloadWithYtDlp(url, destination);
     return;
@@ -117,7 +135,6 @@ async function render(job) {
     await rm(work, { recursive: true, force: true });
   }
 }
-
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, service: "cliprd-renderer" });
