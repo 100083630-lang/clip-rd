@@ -70,6 +70,8 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   const [topN, setTopN] = useState(3);
   const [videoName, setVideoName] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [liveUrl, setLiveUrl] = useState("");
   const [liveOn, setLiveOn] = useState(false);
   const [liveSeconds, setLiveSeconds] = useState(0);
@@ -103,7 +105,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     try {
       const response = await fetch("/api/pipeline/jobs", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript, mode: duration, clips: items.filter((x) => selected.includes(x.id)) }),
+        body: JSON.stringify({ sourceUrl, transcript, mode: duration, clips: items.filter((x) => selected.includes(x.id)) }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo crear el trabajo");
@@ -123,9 +125,24 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
 
   function loadVideo(file?: File) {
     if (!file) return;
+    if (!file.type.startsWith("video/")) { setPipelineMessage("Selecciona un archivo de video valido."); return; }
     if (videoUrl) URL.revokeObjectURL(videoUrl);
     setVideoName(file.name);
     setVideoUrl(URL.createObjectURL(file));
+    setSourceUrl(null);
+    setUploading(true);
+    setPipelineMessage("Subiendo video al almacenamiento seguro...");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/pipeline/upload", { method: "POST", body: form });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo subir el video");
+      setSourceUrl(data.sourceUrl);
+      setPipelineMessage("Video listo para procesamiento real.");
+    } catch (error) {
+      setPipelineMessage(error instanceof Error ? error.message : "Error al subir el video");
+    } finally { setUploading(false); }
   }
 
   function loadTranscript(file?: File) {
@@ -171,8 +188,8 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
                 {([["viral", "🔥 Máximo potencial"], ["short", "📱 Shorts 20–60s"], ["long", "🎬 Clips 60–180s"]] as const).map(([v, label]) => <button key={v} onClick={() => setDuration(v)} className={`btn ${duration === v ? "btn-primary" : "btn-ghost"}`}>{label}</button>)}
               </div>
               <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar y seleccionar mejores momentos"}</button>
-              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length} className="btn btn-ghost mt-2 w-full"><Upload className="size-4" /> Enviar selección al pipeline real</button>
-              <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>
+              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length || !sourceUrl || uploading} className="btn btn-ghost mt-2 w-full"><Upload className="size-4" /> {uploading ? "Preparando video..." : sourceUrl ? "Renderizar selección real" : "Primero sube el video"}</button>
+              <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>{sourceUrl && <p className="mt-1 text-xs text-neon">✓ Fuente preparada y accesible para el renderer.</p>}
             </div>
           </section>
 
