@@ -109,7 +109,15 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo crear el trabajo");
-      setPipelineMessage(data.dispatched ? `Trabajo ${data.job.id.slice(0, 8)} enviado al renderer.` : `Trabajo ${data.job.id.slice(0, 8)} guardado en cola. Configura el renderer para procesarlo.`);
+      const job = data.job;
+      if (job?.status === "ready" && job?.outputUrl) {
+        setPipelineMessage(`✓ Clip renderizado: ${job.outputUrl}`);
+        window.open(job.outputUrl, "_blank", "noopener,noreferrer");
+      } else if (data.dispatched) {
+        setPipelineMessage(`Trabajo ${job.id.slice(0, 8)} enviado al renderer. Estado: ${job.status}.`);
+      } else {
+        setPipelineMessage(`Trabajo ${job.id.slice(0, 8)} guardado en cola.`);
+      }
     } catch (error) { setPipelineMessage(error instanceof Error ? error.message : "Error al enviar al pipeline"); }
   }
 
@@ -123,7 +131,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     }, 850);
   }
 
-  function loadVideo(file?: File) {
+  async function loadVideo(file?: File) {
     if (!file) return;
     if (!file.type.startsWith("video/")) { setPipelineMessage("Selecciona un archivo de video valido."); return; }
     if (videoUrl) URL.revokeObjectURL(videoUrl);
