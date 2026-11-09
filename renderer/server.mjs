@@ -62,63 +62,42 @@ async function downloadUrlToFile(fileUrl, destination) {
   if (!dl.ok || !dl.body) throw new Error("Download " + dl.status);
   await pipeline(Readable.fromWeb(dl.body), createWriteStream(destination));
 }
-// V7: Cobalt - servicio que descarga YouTube por nosotros
-async function downloadViaCobalt(url, destination) {
-  const apis = ["https://api.cobalt.tools/api/json", "https://cobalt.api.timelessnesses.me/api/json", "https://api.cobalt.tools"];
-  let lastErr = "";
-  for (const api of apis) {
-    try {
-      const res = await fetch(api, {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json", "user-agent": "Mozilla/5.0" },
-        body: JSON.stringify({ url, vCodec: "h264", vQuality: "720", filenamePattern: "classic" })
-      });
-      const text = await res.text();
-      if (!res.ok || text.trim().startsWith("<")) { lastErr = api + " HTTP " + res.status + " " + text.slice(0,120); continue; }
-      const data = JSON.parse(text);
-      const fileUrl = data.url || data.downloadUrl;
-      if (!fileUrl) { lastErr = api + " sin url: " + text.slice(0,200); continue; }
-      await downloadUrlToFile(fileUrl, destination);
-      return;
-    } catch (e) { lastErr = api + " " + String(e).slice(0,300); }
-  }
-  throw new Error("V7 Cobalt failed: " + lastErr);
-}
-async function downloadViaPiped(id, destination) {
-  const apis = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://pipedapi.leptons.xyz"];
-  let lastErr = "";
-  for (const base of apis) {
-    try {
-      const res = await fetch(base + "/streams/" + id, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0" } });
-      const text = await res.text();
-      if (!res.ok || text.trim().startsWith("<")) { lastErr = base + " HTML " + res.status; continue; }
-      const data = JSON.parse(text);
-      const candidates = [];
-      if (data.videoStreams) for (const s of data.videoStreams) if (s.url) candidates.push(s);
-      if (data.audioStreams) for (const s of data.audioStreams) if (s.url) candidates.push(s);
-      const pick = candidates.find(s => (s.mimeType||"").includes("mp4") && s.url) || candidates[0];
-      if (!pick?.url) { lastErr = base + " no url"; continue; }
-      await downloadUrlToFile(pick.url, destination);
-      return;
-    } catch (e) { lastErr = base + " " + String(e).slice(0,200); }
-  }
-  throw new Error("V7 Piped failed: " + lastErr);
-}
+// Downloading is intentionally kept inside the renderer.
+// For YouTube, use the maintained yt-dlp binary only. Third-party Piped/Cobalt
+// instances are not reliable production dependencies and commonly return 403/HTML.
 async function downloadWithYtDlp(url, destination) {
-  const base = (client) => ["--no-playlist", "--js-runtimes", "node:deno", "--force-ipv4", "--extractor-args", "youtube:player_client=" + client, "--extractor-args", "youtube:player_skip=webpage,configs", "--no-check-certificates", "--geo-bypass", "--no-warnings", "-f", "bv*[height<=720]+ba/b[height<=720]/b", "--remux-video", "mp4", "--recode-video", "mp4", "-o", destination, url];
-  const clients = ["android", "mediaconnect", "tv", "web_embedded", "ios"];
-  for (let i = 0; i < clients.length; i++) {
-    try { await run("yt-dlp", base(clients[i])); return; }
-    catch (e) { console.log("yt-dlp " + clients[i] + " failed"); }
+  const clients = ["android", "tv", "web_embedded", "ios"];
+  let lastError = "";
+
+  for (const client of clients) {
+    const args = [
+      "--no-playlist",
+      "--force-ipv4",
+      "--no-warnings",
+      "--geo-bypass",
+      "--extractor-args", "youtube:player_client=" + client,
+      "-f", "bv*[height<=720]+ba/b[height<=720]/b",
+      "--merge-output-format", "mp4",
+      "--remux-video", "mp4",
+      "-o", destination,
+      url
+    ];
+    try {
+      await run("yt-dlp", args);
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      console.log("yt-dlp client " + client + " failed: " + lastError.slice(-300));
+    }
   }
-  // 1. Cobalt
-  try { await downloadViaCobalt(url, destination); return; }
-  catch (e) { console.log(String(e).slice(0,400)); }
-  // 2. Piped
-  const id = getVideoId(url);
-  if (!id) throw new Error("V7 No video id");
-  await downloadViaPiped(id, destination);
+
+  throw new Error(
+    "YouTube download failed in yt-dlp. Update the renderer image and try again. " +
+    "For content you own or are authorized to use, you can also upload the MP4 directly. " +
+    lastError.slice(-500)
+  );
 }
+
 async function download(url, destination) {
   if (isYouTube(url)) { await downloadWithYtDlp(url, destination); return; }
   const response = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
