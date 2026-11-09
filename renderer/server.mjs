@@ -76,7 +76,7 @@ async function downloadWithYtDlp(url, destination, work) {
     const args = [
       "--no-playlist", "--force-ipv4", "--no-warnings", "--geo-bypass",
       "--extractor-args", "youtube:player_client=" + client,
-      "-f", "bv*[height<=720]+ba/b[height<=720]/b",
+      "-f", "bestvideo*+bestaudio/best",
       "--merge-output-format", "mp4", "--remux-video", "mp4",
       "--socket-timeout", "30", "-o", destination
     ];
