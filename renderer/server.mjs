@@ -184,8 +184,16 @@ async function render(job) {
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "OPTIONS") { cors(res); res.writeHead(204); return res.end(); }
-    if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, service: "cliprd-renderer", youtubeCookiesConfigured: Boolean(cookiesBase64), storageConfigured: Boolean(supabaseUrl && serviceKey) });
-    if (req.method !== "POST" || req.url !== "/jobs") return send(res, 404, { error: "Not found" });
+    if (req.method === "GET" && (req.url === "/" || req.url === "")) return send(res, 200, {
+      ok: true,
+      service: "cliprd-renderer",
+      status: "online",
+      endpoints: { health: "/health", jobs: "/jobs (POST)" },
+      youtubeCookiesConfigured: Boolean(cookiesBase64),
+      storageConfigured: Boolean(supabaseUrl && serviceKey)
+    });
+    if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, service: "cliprd-renderer", status: "online", youtubeCookiesConfigured: Boolean(cookiesBase64), storageConfigured: Boolean(supabaseUrl && serviceKey) });
+    if (req.method !== "POST" || req.url !== "/jobs") return send(res, 404, { error: "Not found", endpoints: { health: "/health", jobs: "/jobs (POST)" } });
     if (token && req.headers.authorization !== "Bearer " + token) return send(res, 401, { error: "Unauthorized" });
     const job = await readJson(req);
     const result = await render({ id: job.id || randomUUID(), ...job });
