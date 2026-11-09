@@ -1,7 +1,7 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -11,8 +11,15 @@ const token = process.env.CLIPRD_RENDERER_TOKEN || "";
 const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const bucket = process.env.CLIPRD_STORAGE_BUCKET || "cliprd-renders";
+const cookiesBase64 = process.env.YTDLP_COOKIES_BASE64 || "";
 
+function cors(res) {
+  res.setHeader("access-control-allow-origin", process.env.CLIPRD_ALLOWED_ORIGIN || "*");
+  res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
+  res.setHeader("access-control-allow-headers", "content-type,authorization");
+}
 function send(res, status, data) {
+  cors(res);
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(JSON.stringify(data));
 }
@@ -37,7 +44,7 @@ function ffmpeg(args) {
     let stderr = "";
     child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
     child.on("error", reject);
-    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-2000) || "ffmpeg failed")));
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-2500) || "ffmpeg failed")));
   });
 }
 function run(cmd, args) {
@@ -46,64 +53,56 @@ function run(cmd, args) {
     let stderr = "";
     child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
     child.on("error", reject);
-    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-2000) || cmd + " failed")));
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-3000) || cmd + " failed")));
   });
 }
 function isYouTube(url) { return /youtube\.com|youtu\.be|music\.youtube\.com/i.test(url); }
-function getVideoId(url) {
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes("youtu.be")) return u.pathname.slice(1).split("?")[0];
-    return u.searchParams.get("v") || "";
-  } catch { return ""; }
+
+async function createCookiesFile(work) {
+  if (!cookiesBase64) return null;
+  const raw = Buffer.from(cookiesBase64, "base64").toString("utf8");
+  if (!raw.includes("Netscape HTTP Cookie File") && !raw.includes("\t")) throw new Error("YTDLP_COOKIES_BASE64 no contiene un archivo cookies.txt valido");
+  const file = work + "/cookies.txt";
+  await writeFile(file, raw, { mode: 0o600 });
+  return file;
 }
-async function downloadUrlToFile(fileUrl, destination) {
-  const dl = await fetch(fileUrl, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36" } });
-  if (!dl.ok || !dl.body) throw new Error("Download " + dl.status);
-  await pipeline(Readable.fromWeb(dl.body), createWriteStream(destination));
-}
-// Downloading is intentionally kept inside the renderer.
-// For YouTube, use the maintained yt-dlp binary only. Third-party Piped/Cobalt
-// instances are not reliable production dependencies and commonly return 403/HTML.
-async function downloadWithYtDlp(url, destination) {
-  const clients = ["android", "tv", "web_embedded", "ios"];
+
+async function downloadWithYtDlp(url, destination, work) {
+  const cookieFile = await createCookiesFile(work);
+  const clients = cookieFile ? ["web", "android", "tv", "ios"] : ["android", "tv", "web_embedded", "ios"];
   let lastError = "";
 
   for (const client of clients) {
     const args = [
-      "--no-playlist",
-      "--force-ipv4",
-      "--no-warnings",
-      "--geo-bypass",
+      "--no-playlist", "--force-ipv4", "--no-warnings", "--geo-bypass",
       "--extractor-args", "youtube:player_client=" + client,
       "-f", "bv*[height<=720]+ba/b[height<=720]/b",
-      "--merge-output-format", "mp4",
-      "--remux-video", "mp4",
-      "-o", destination,
-      url
+      "--merge-output-format", "mp4", "--remux-video", "mp4",
+      "--socket-timeout", "30", "-o", destination
     ];
+    if (cookieFile) args.push("--cookies", cookieFile);
+    args.push(url);
     try {
       await run("yt-dlp", args);
       return;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
-      console.log("yt-dlp client " + client + " failed: " + lastError.slice(-300));
+      console.log("yt-dlp client " + client + " failed: " + lastError.slice(-500));
     }
   }
-
-  throw new Error(
-    "YouTube download failed in yt-dlp. Update the renderer image and try again. " +
-    "For content you own or are authorized to use, you can also upload the MP4 directly. " +
-    lastError.slice(-500)
-  );
+  const hint = cookieFile
+    ? "yt-dlp no pudo descargar usando las cookies configuradas. Verifica que las cookies sigan vigentes y vuelve a exportarlas desde tu navegador."
+    : "YouTube solicito autenticacion. Para contenido propio o autorizado, configura YTDLP_COOKIES_BASE64 en Render con un cookies.txt en formato Netscape codificado en Base64, o usa una URL directa de MP4.";
+  throw new Error(hint + " " + lastError.slice(-700));
 }
 
-async function download(url, destination) {
-  if (isYouTube(url)) { await downloadWithYtDlp(url, destination); return; }
+async function download(url, destination, work) {
+  if (isYouTube(url)) return downloadWithYtDlp(url, destination, work);
   const response = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0" } });
   if (!response.ok || !response.body) throw new Error("Source download failed: " + response.status);
   await pipeline(Readable.fromWeb(response.body), createWriteStream(destination));
 }
+
 async function ensureBucket() {
   if (!supabaseUrl || !serviceKey) return false;
   const headers = { authorization: "Bearer " + serviceKey, apikey: serviceKey, "content-type": "application/json" };
@@ -115,22 +114,27 @@ async function ensureBucket() {
 }
 async function upload(file, objectName) {
   if (!await ensureBucket()) return null;
-  const bytes = await (await import("node:fs/promises")).readFile(file);
+  const bytes = await readFile(file);
   const headers = { authorization: "Bearer " + serviceKey, apikey: serviceKey, "content-type": "video/mp4", "x-upsert": "true" };
-  const put = await fetch(supabaseUrl + "/storage/v1/object/" + encodeURIComponent(bucket) + "/" + objectName.split("/").map(encodeURIComponent).join("/"), { method: "POST", headers, body: bytes });
+  const objectPath = objectName.split("/").map(encodeURIComponent).join("/");
+  const put = await fetch(supabaseUrl + "/storage/v1/object/" + encodeURIComponent(bucket) + "/" + objectPath, { method: "POST", headers, body: bytes });
   if (!put.ok) throw new Error("Storage upload failed: " + put.status);
-  const signed = await fetch(supabaseUrl + "/storage/v1/object/sign/" + encodeURIComponent(bucket) + "/" + objectName.split("/").map(encodeURIComponent).join("/"), { method: "POST", headers: { authorization: "Bearer " + serviceKey, apikey: serviceKey, "content-type": "application/json" }, body: JSON.stringify({ expiresIn: 60 * 60 * 24 * 7 }) });
+  const signed = await fetch(supabaseUrl + "/storage/v1/object/sign/" + encodeURIComponent(bucket) + "/" + objectPath, {
+    method: "POST", headers: { authorization: "Bearer " + serviceKey, apikey: serviceKey, "content-type": "application/json" },
+    body: JSON.stringify({ expiresIn: 60 * 60 * 24 * 7 })
+  });
   if (!signed.ok) return null;
   const data = await signed.json();
   return supabaseUrl + "/storage/v1" + data.signedURL;
 }
+
 async function render(job) {
   if (!job.sourceUrl || !/^https?:\/\//i.test(job.sourceUrl)) throw new Error("sourceUrl must be an authorized http(s) URL");
   const work = "/tmp/cliprd-" + randomUUID();
   await mkdir(work, { recursive: true });
   try {
-    const input = work + "/source";
-    await download(job.sourceUrl, input);
+    const input = work + "/source.mp4";
+    await download(job.sourceUrl, input, work);
     const clips = Array.isArray(job.clips) ? job.clips.slice(0, 6) : [];
     if (!clips.length) throw new Error("No clip segments selected");
     const outputs = [];
@@ -140,20 +144,25 @@ async function render(job) {
       const end = Math.max(start + 1, toSeconds(clip.end));
       const output = work + "/clip-" + (i + 1) + ".mp4";
       await ffmpeg(["-ss", String(start), "-to", String(end), "-i", input, "-map", "0:v:0?", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-movflags", "+faststart", output]);
-      const url = await upload(output, "jobs/" + job.id + "/clip-" + (i + 1) + ".mp4");
+      const url = await upload(output, "jobs/" + (job.id || randomUUID()) + "/clip-" + (i + 1) + ".mp4");
       outputs.push({ index: i + 1, url, start, end });
     }
     return { outputs };
   } finally { await rm(work, { recursive: true, force: true }); }
 }
+
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, service: "cliprd-renderer" });
+    if (req.method === "OPTIONS") { cors(res); res.writeHead(204); return res.end(); }
+    if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, service: "cliprd-renderer", youtubeCookiesConfigured: Boolean(cookiesBase64), storageConfigured: Boolean(supabaseUrl && serviceKey) });
     if (req.method !== "POST" || req.url !== "/jobs") return send(res, 404, { error: "Not found" });
     if (token && req.headers.authorization !== "Bearer " + token) return send(res, 401, { error: "Unauthorized" });
     const job = await readJson(req);
-    const result = await render(job);
+    const result = await render({ id: job.id || randomUUID(), ...job });
     return send(res, 200, { ok: true, jobId: job.id, ...result });
-  } catch (error) { return send(res, 500, { error: error instanceof Error ? error.message : "Renderer failed" }); }
+  } catch (error) {
+    console.error(error);
+    return send(res, 500, { error: error instanceof Error ? error.message : "Renderer failed" });
+  }
 });
 server.listen(port, "0.0.0.0", () => console.log("CLIPRD renderer listening on " + port));
