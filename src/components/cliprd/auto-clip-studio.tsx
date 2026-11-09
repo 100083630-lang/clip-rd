@@ -27,6 +27,11 @@ function stamp(n: number) {
   return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
 }
 
+function toSeconds(value: string) {
+  const parts = value.split(":").map(Number);
+  return parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+}
+
 function scoreLine(text: string, index: number, mode: DurationMode): Segment {
   const t = text.toLowerCase();
   const tags: string[] = [];
@@ -70,8 +75,10 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   const [topN, setTopN] = useState(3);
   const [videoName, setVideoName] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [sourceUrl, setSourceUrl] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [agentOrigin] = useState("http://127.0.0.1:3847");
   const [liveUrl, setLiveUrl] = useState("");
   const [liveOn, setLiveOn] = useState(false);
   const [liveSeconds, setLiveSeconds] = useState(0);
@@ -80,6 +87,22 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   const transcriptInput = useRef<HTMLInputElement>(null);
 
   const avg = useMemo(() => clips.length ? Math.round(clips.reduce((s, c) => s + c.score, 0) / clips.length) : 0, [clips]);
+
+  useEffect(() => {
+    let active = true;
+    const check = async () => {
+      try {
+        const response = await fetch(agentOrigin + "/health");
+        if (!response.ok) throw new Error("Agent offline");
+        if (active) setAgentStatus("online");
+      } catch {
+        if (active) setAgentStatus("offline");
+      }
+    };
+    check();
+    const timer = window.setInterval(check, 10000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [agentOrigin]);
 
   useEffect(() => {
     if (!liveOn) return;
@@ -102,23 +125,40 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   }, [liveOn, liveSeconds, topN]);
 
   async function sendToPipeline(items: Segment[]) {
+    const selectedItems = items.filter((x) => selected.includes(x.id));
+    if (!sourceUrl.trim()) {
+      setPipelineMessage("Pega una URL de YouTube u otra fuente autorizada antes de renderizar.");
+      return;
+    }
+    if (agentStatus !== "online") {
+      setPipelineMessage("CLIPRD Local Agent no está activo. Ejecuta npm start dentro de cliprd-agent y vuelve a intentar.");
+      return;
+    }
+    setUploading(true);
+    setPipelineMessage("Enviando selección al motor local...");
     try {
-      const response = await fetch("/api/pipeline/jobs", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceUrl, transcript, mode: duration, clips: items.filter((x) => selected.includes(x.id)) }),
+      const response = await fetch(agentOrigin + "/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceUrl: sourceUrl.trim(),
+          clips: selectedItems.map((clip) => ({
+            start: toSeconds(clip.start),
+            end: toSeconds(clip.end),
+          })),
+        }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "No se pudo crear el trabajo");
-      const job = data.job;
-      if (job?.status === "ready" && job?.outputUrl) {
-        setPipelineMessage(`✓ Clip renderizado: ${job.outputUrl}`);
-        window.open(job.outputUrl, "_blank", "noopener,noreferrer");
-      } else if (data.dispatched) {
-        setPipelineMessage(`Trabajo ${job.id.slice(0, 8)} enviado al renderer. Estado: ${job.status}.`);
-      } else {
-        setPipelineMessage(`Trabajo ${job.id.slice(0, 8)} guardado en cola.`);
-      }
-    } catch (error) { setPipelineMessage(error instanceof Error ? error.message : "Error al enviar al pipeline"); }
+      if (!response.ok) throw new Error(data.error || "El motor local no pudo generar los clips");
+      const count = Array.isArray(data.outputs) ? data.outputs.length : 0;
+      setPipelineMessage("✓ " + count + " clip(s) generados. Se guardaron en CLIPRD-Clips en tu computadora.");
+      setEvents((current) => ["Render local completado · " + count + " clips", ...current].slice(0, 6));
+      if (data.outputs?.[0]?.url) window.open(data.outputs[0].url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setPipelineMessage(error instanceof Error ? error.message : "Error al conectar con CLIPRD Local Agent");
+    } finally {
+      setUploading(false);
+    }
   }
 
   function runAnalysis() {
@@ -137,7 +177,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
     setVideoName(file.name);
     setVideoUrl(URL.createObjectURL(file));
-    setSourceUrl(null);
+    setSourceUrl("");
     setUploading(true);
     setPipelineMessage("Subiendo video al almacenamiento seguro...");
     try {
@@ -196,8 +236,21 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
                 {([["viral", "🔥 Máximo potencial"], ["short", "📱 Shorts 20–60s"], ["long", "🎬 Clips 60–180s"]] as const).map(([v, label]) => <button key={v} onClick={() => setDuration(v)} className={`btn ${duration === v ? "btn-primary" : "btn-ghost"}`}>{label}</button>)}
               </div>
               <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar y seleccionar mejores momentos"}</button>
-              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length || !sourceUrl || uploading} className="btn btn-ghost mt-2 w-full"><Upload className="size-4" /> {uploading ? "Preparando video..." : sourceUrl ? "Renderizar selección real" : "Primero sube el video"}</button>
-              <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>{sourceUrl && <p className="mt-1 text-xs text-neon">✓ Fuente preparada y accesible para el renderer.</p>}
+              <label className="field mt-4 block">
+                <span className="label">URL DE VIDEO AUTORIZADO</span>
+                <input className="input mt-2" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+              </label>
+              <div className="mt-3 flex items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-2 text-xs">
+                <span>CLIPRD Local Agent</span>
+                <span className={agentStatus === "online" ? "text-neon font-bold" : agentStatus === "checking" ? "text-warn" : "text-danger"}>
+                  {agentStatus === "online" ? "● CONECTADO" : agentStatus === "checking" ? "● COMPROBANDO" : "● DESCONECTADO"}
+                </span>
+              </div>
+              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length || !sourceUrl.trim() || uploading || agentStatus !== "online"} className="btn btn-primary mt-3 w-full">
+                <Scissors className="size-4" /> {uploading ? "Generando clips reales..." : "Generar clips en mi computadora"}
+              </button>
+              <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>
+              {agentStatus === "offline" && <p className="mt-1 text-xs text-danger">Inicia el agente con <code>npm start</code> dentro de <code>cliprd-agent</code>.</p>}
             </div>
           </section>
 
@@ -242,7 +295,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
         </div>
       </section>
 
-      <section className="card mt-6 p-5"><div className="flex gap-4"><MonitorPlay className="mt-1 size-6 text-neon" /><div><h2 className="text-xl font-black">Pipeline de producción</h2><p className="mt-1 text-sm text-muted">La interfaz ya organiza detección y cola. Para generar MP4 reales en producción, el siguiente backend conecta storage, jobs persistentes, FFmpeg/worker y subtítulos. Ese procesamiento pesado debe ejecutarse fuera del navegador y con una fuente de video autorizada.</p></div><ChevronRight className="ml-auto size-5 text-muted" /></div></section>
+      <section className="card mt-6 p-5"><div className="flex gap-4"><MonitorPlay className="mt-1 size-6 text-neon" /><div><h2 className="text-xl font-black">Pipeline de producción</h2><p className="mt-1 text-sm text-muted">CLIPRD detecta y selecciona los momentos; el Local Agent de tu computadora descarga fuentes propias o autorizadas y genera los MP4 con FFmpeg sin depender del renderer remoto.</p></div><ChevronRight className="ml-auto size-5 text-muted" /></div></section>
     </Shell>
   );
 }
