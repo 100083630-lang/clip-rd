@@ -8,7 +8,8 @@ import crypto from "node:crypto";
 const PORT = Number(process.env.PORT || 3847);
 const HOST = process.env.HOST || "127.0.0.1";
 const OUT = path.resolve(process.env.CLIPRD_OUTPUT_DIR || path.join(os.homedir(), "CLIPRD-Clips"));
-const BROWSER = process.env.YTDLP_BROWSER || "chrome";
+const BROWSER = (process.env.YTDLP_BROWSER || "").trim();
+const COOKIE_FILE = (process.env.YTDLP_COOKIE_FILE || "").trim();
 
 await mkdir(OUT, { recursive: true });
 
@@ -69,19 +70,37 @@ async function renderJob(sourceUrl, clips) {
 
   try {
     const template = path.join(work, "source.%(ext)s");
-    const args = [
+    const baseArgs = [
       "--no-playlist",
       "--restrict-filenames",
-      "-f", "bv*+ba/b",
+      "-f", "bv*+ba/b/best",
       "--merge-output-format", "mp4",
       "-o", template,
       sourceUrl
     ];
 
-    // El agente se ejecuta en la PC del usuario. Solo usa la sesión local si está disponible.
-    if (BROWSER) args.unshift("--cookies-from-browser", BROWSER);
+    // En Windows NO intentamos leer Chrome automáticamente: la protección DPAPI/App-Bound
+    // puede fallar aunque yt-dlp esté correctamente instalado. Preferimos un cookies.txt
+    // exportado explícitamente y solo usamos --cookies-from-browser si el usuario lo pide.
+    const downloadArgs = [...baseArgs];
+    if (COOKIE_FILE) {
+      downloadArgs.unshift("--cookies", COOKIE_FILE);
+    } else if (BROWSER) {
+      downloadArgs.unshift("--cookies-from-browser", BROWSER);
+    }
 
-    await run("yt-dlp", args, work);
+    try {
+      await run("yt-dlp", downloadArgs, work);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/Failed to decrypt with DPAPI/i.test(message)) {
+        throw new Error(
+          "Windows bloqueó la lectura directa de cookies del navegador (DPAPI). CLIPRD ya no debe usar Chrome automáticamente. " +
+          "Configura YTDLP_COOKIE_FILE con la ruta completa de un cookies.txt exportado en formato Netscape, o elimina YTDLP_BROWSER."
+        );
+      }
+      throw error;
+    }
 
     const files = await readdir(work);
     const sourceName = files.find(f => /.(mp4|mkv|webm|mov)$/i.test(f));
@@ -116,7 +135,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/health") {
-      return json(res, 200, { ok: true, service: "CLIPRD Local Agent", version: "1.0.1", outputDir: OUT, browser: BROWSER || null });
+      return json(res, 200, { ok: true, service: "CLIPRD Local Agent", version: "1.0.2", outputDir: OUT, browser: BROWSER || null, cookieFile: COOKIE_FILE ? "configured" : null });
     }
 
     if (req.method === "POST" && url.pathname === "/render") {
