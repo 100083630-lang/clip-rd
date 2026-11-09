@@ -12,12 +12,13 @@
 </head>
 <body>
 <div class="app">
-<header class="top"><div class="logo">CLIP<span>RD</span></div><div class="pill"><i class="dot" id="dot"></i><span id="status">Conectando renderer…</span></div></header>
+<header class="top"><div class="logo">CLIP<span>RD</span></div><div class="pill"><i class="dot" id="dot"></i><span id="status">Conectando motor local…</span></div></header>
 <div class="hero">
 <main class="card">
 <h1>Tu estudio personal de <span class="gradient">auto clipping.</span></h1>
-<p class="sub">Pega una URL de un video que tengas derecho a procesar. CLIPRD prepara los segmentos y los envía al renderer para crear MP4 reales. YouTube puede exigir autenticación o bloquear servidores; una URL directa a un MP4 propio es el método más estable.</p>
-<div class="section"><label class="label">Video fuente</label><input class="input" id="sourceUrl" placeholder="https://www.youtube.com/... o https://tu-servidor/video.mp4"></div>
+<p class="sub">Pega una URL de contenido propio o autorizado. CLIPRD envía el trabajo directamente al motor instalado en tu computadora, donde yt-dlp y FFmpeg descargan y generan los MP4. Así no dependes de un servidor remoto para procesar.</p>
+<div class="section"><label class="label">Motor CLIPRD local</label><input class="input" id="agentUrl" value="http://127.0.0.1:3847" placeholder="http://127.0.0.1:3847"><p class="hint">Debe ejecutarse en esta misma computadora con <code>npm start</code> dentro de <code>cliprd-agent</code>.</p></div>
+<div class="section"><label class="label">Video fuente</label><input class="input" id="sourceUrl" placeholder="https://www.youtube.com/... o URL directa a un MP4 autorizado"></div>
 <div class="row section">
 <div><label class="label">Duración estimada (minutos)</label><input class="input" id="duration" type="number" min="1" value="60"></div>
 <div><label class="label">Duración por clip (segundos)</label><input class="input" id="clipLength" type="number" min="10" max="180" value="45"></div>
@@ -28,26 +29,87 @@
 <p class="hint">La selección automática actual crea una distribución inteligente de segmentos editables. La detección semántica real de “mejores momentos” requiere analizar audio/transcripción; no se muestra como terminada hasta implementar ese motor.</p>
 </main>
 <aside class="card">
-<h2 class="sideTitle">Centro de producción</h2><p class="sub" style="margin:0">Estado en tiempo real de tu renderer personal.</p>
-<div class="stats"><div class="stat"><b id="count">0</b><span>clips seleccionados</span></div><div class="stat"><b id="rendererState">—</b><span>renderer</span></div></div>
+<h2 class="sideTitle">Centro de producción</h2><p class="sub" style="margin:0">Estado en tiempo real del motor que corre en tu computadora.</p>
+<div class="stats"><div class="stat"><b id="count">0</b><span>clips seleccionados</span></div><div class="stat"><b id="rendererState">—</b><span>motor local</span></div></div>
 <div class="log" id="log">Listo para empezar.</div>
 <div class="output" id="output"></div>
 <div class="footer">CLIPRD personal • procesa solo contenido propio o autorizado.</div>
 </aside>
 </div></div>
 <script>
-const $=id=>document.getElementById(id);let clips=[];
+const $=id=>document.getElementById(id);
+let clips=[];
+function agentBase(){return $("agentUrl").value.trim().replace(/\/+$/,"")}
 function log(t){$("log").textContent=t}
 function renderSegments(){
- const box=$("segments");box.innerHTML="";
- clips.forEach((c,i)=>{const el=document.createElement("div");el.className="segment";
- el.innerHTML='<b>#'+(i+1)+'</b><input class="input" type="number" min="0" value="'+c.start+'" aria-label="Inicio"><input class="input" type="number" min="1" value="'+c.end+'" aria-label="Fin"><button class="remove" aria-label="Eliminar">×</button>';
- const inputs=el.querySelectorAll("input");inputs[0].oninput=()=>clips[i].start=Number(inputs[0].value);inputs[1].oninput=()=>clips[i].end=Number(inputs[1].value);
- el.querySelector("button").onclick=()=>{clips.splice(i,1);renderSegments()};box.appendChild(el)});
- $("count").textContent=clips.length;
+  const box=$("segments"); box.innerHTML="";
+  clips.forEach((c,i)=>{
+    const el=document.createElement("div"); el.className="segment";
+    el.innerHTML='<b>#'+(i+1)+'</b><input class="input" type="number" min="0" value="'+c.start+'" aria-label="Inicio"><input class="input" type="number" min="1" value="'+c.end+'" aria-label="Fin"><button class="remove" aria-label="Eliminar">×</button>';
+    const inputs=el.querySelectorAll("input");
+    inputs[0].oninput=()=>{clips[i].start=Math.max(0,Number(inputs[0].value||0));if(clips[i].end<=clips[i].start)clips[i].end=clips[i].start+1};
+    inputs[1].oninput=()=>{clips[i].end=Math.max(clips[i].start+1,Number(inputs[1].value||1))};
+    el.querySelector("button").onclick=()=>{clips.splice(i,1);renderSegments()};
+    box.appendChild(el)
+  });
+  $("count").textContent=clips.length;
 }
-$("auto").onclick=()=>{const total=Math.max(60,Number($("duration").value||60)*60),len=Math.max(10,Number($("clipLength").value||45));const count=Math.min(6,Math.max(3,Math.round(total/900)));clips=[];for(let i=0;i<count;i++){const center=((i+1)*total)/(count+1);const start=Math.max(0,Math.round(center-len/2));clips.push({start,end:Math.min(total,start+len)})}renderSegments();log("✨ Selección creada: "+clips.length+" segmentos. Puedes ajustar inicio y fin antes de renderizar.")};
+$("auto").onclick=()=>{
+  const total=Math.max(60,Number($("duration").value||60)*60);
+  const len=Math.max(10,Math.min(180,Number($("clipLength").value||45)));
+  const count=Math.min(6,Math.max(3,Math.round(total/900)));
+  clips=[];
+  for(let i=0;i<count;i++){
+    const center=((i+1)*total)/(count+1);
+    const start=Math.max(0,Math.round(center-len/2));
+    clips.push({start,end:Math.min(total,start+len)})
+  }
+  renderSegments();
+  log("✨ Selección creada: "+clips.length+" segmentos editables. Ajusta los tiempos si lo deseas.")
+};
 $("add").onclick=()=>{clips.push({start:0,end:45});renderSegments()};
-$("render").onclick=async()=>{const sourceUrl=$("sourceUrl").value.trim();if(!sourceUrl)return log("❌ Pega una URL del video.");if(!clips.length)return log("❌ Primero crea o añade segmentos.");const btn=$("render");btn.disabled=true;$("output").innerHTML="";log("🎬 Enviando trabajo al renderer…\nEsto puede tardar mientras descarga y codifica el video.");try{const r=await fetch("/api/render",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({sourceUrl,clips})});const data=await r.json().catch(()=>({error:"Respuesta inválida"}));if(!r.ok)throw new Error(data.error||"Error "+r.status);log("✅ Trabajo terminado correctamente.");(data.outputs||[]).forEach(x=>{const d=document.createElement("div");d.className="clip";d.innerHTML="<b>✓ Clip "+x.index+" listo</b><br><span>"+x.start+"s → "+x.end+"s</span>"+(x.url?'<br><a href="'+x.url+'" target="_blank" rel="noopener">Abrir / descargar clip →</a>':"<br>⚠️ Renderizado, pero sin URL pública de almacenamiento.");$("output").appendChild(d)})}catch(e){log("❌ "+e.message)}finally{btn.disabled=false}};
-async function health(){try{const r=await fetch("/api/health",{cache:"no-store"});const d=await r.json();const ok=!!d.ok;$("status").textContent=ok?"Renderer conectado":"Renderer no disponible";$("rendererState").textContent=ok?"ONLINE":"OFFLINE";$("dot").style.background=ok?"#29d7a1":"#ff6677"}catch{$("status").textContent="Error de conexión";$("rendererState").textContent="ERROR";$("dot").style.background="#ff6677"}}health();setInterval(health,30000);$("auto").click();
+$("render").onclick=async()=>{
+  const sourceUrl=$("sourceUrl").value.trim();
+  const base=agentBase();
+  if(!/^https?:\/\//i.test(base))return log("❌ La URL del motor local debe comenzar con http:// o https://.");
+  if(!sourceUrl)return log("❌ Pega una URL del video.");
+  if(!clips.length)return log("❌ Primero crea o añade segmentos.");
+  const btn=$("render"); btn.disabled=true; $("output").innerHTML="";
+  log("🎬 Enviando trabajo al motor local…\nLa descarga y codificación ocurren en tu computadora.");
+  try{
+    const r=await fetch(base+"/render",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({sourceUrl,clips})});
+    const raw=await r.text();
+    let data={};
+    try{data=raw?JSON.parse(raw):{}}catch{throw new Error("El motor local devolvió una respuesta no válida. Abre "+base+"/health y verifica que muestre JSON.")}
+    if(!r.ok)throw new Error(data.error||"Error "+r.status);
+    const outputs=Array.isArray(data.outputs)?data.outputs:[];
+    if(!outputs.length)throw new Error("El motor terminó sin archivos de salida.");
+    log("✅ Trabajo terminado: "+outputs.length+" clip(s) generados en CLIPRD-Clips.");
+    outputs.forEach(x=>{
+      const d=document.createElement("div");d.className="clip";
+      d.innerHTML="<b>✓ Clip "+x.index+" listo</b><br><span>"+x.start+"s → "+x.end+"s</span>"+(x.url?'<br><a href="'+x.url+'" target="_blank" rel="noopener">Abrir clip →</a>':"");
+      $("output").appendChild(d)
+    });
+  }catch(e){log("❌ "+(e&&e.message?e.message:"Error desconocido al conectar con el motor local."))}
+  finally{btn.disabled=false}
+};
+async function health(){
+  const base=agentBase();
+  try{
+    const r=await fetch(base+"/health",{cache:"no-store"});
+    const raw=await r.text();
+    const d=raw?JSON.parse(raw):null;
+    const ok=!!(r.ok&&d&&d.ok&&d.service==="CLIPRD Local Agent");
+    $("status").textContent=ok?"Motor local conectado":"Motor local no disponible";
+    $("rendererState").textContent=ok?"ONLINE":"OFFLINE";
+    $("dot").style.background=ok?"#29d7a1":"#ff6677";
+  }catch{
+    $("status").textContent="Motor local desconectado";
+    $("rendererState").textContent="OFFLINE";
+    $("dot").style.background="#ff6677"
+  }
+}
+$("agentUrl").addEventListener("change",()=>{localStorage.setItem("cliprd-agent-url",agentBase());health()});
+$("agentUrl").value=localStorage.getItem("cliprd-agent-url")||$("agentUrl").value;
+health(); setInterval(health,10000); $("auto").click();
 </script></body></html>
