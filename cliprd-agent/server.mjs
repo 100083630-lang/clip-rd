@@ -23,12 +23,19 @@ function run(cmd, args, cwd) {
   });
 }
 
+function corsHeaders() {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "86400"
+  };
+}
+
 function json(res, code, body) {
   res.writeHead(code, {
     "content-type": "application/json; charset=utf-8",
-    "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type"
+    ...corsHeaders()
   });
   res.end(JSON.stringify(body));
 }
@@ -102,11 +109,14 @@ async function renderJob(sourceUrl, clips) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.method === "OPTIONS") return json(res, 204, {});
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, corsHeaders());
+      return res.end();
+    }
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/health") {
-      return json(res, 200, { ok: true, service: "CLIPRD Local Agent", outputDir: OUT, browser: BROWSER || null });
+      return json(res, 200, { ok: true, service: "CLIPRD Local Agent", version: "1.0.1", outputDir: OUT, browser: BROWSER || null });
     }
 
     if (req.method === "POST" && url.pathname === "/render") {
@@ -136,4 +146,4 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => console.log(`CLIPRD Local Agent listo en http://${HOST}:${PORT}`));
+server.listen(PORT, HOST, () => console.log(`CLIPRD Local Agent v1.0.1 listo en http://${HOST}:${PORT}`));
