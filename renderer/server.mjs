@@ -81,13 +81,14 @@ async function runCapture(cmd, args) {
 
 async function downloadWithYtDlp(url, destination, work) {
   const cookieFile = await createCookiesFile(work);
-  const clients = cookieFile ? ["web", "android", "tv", "ios"] : ["android", "tv", "web_embedded", "ios"];
+  const clients = cookieFile ? ["web", "web_safari"] : ["android", "web_embedded", "tv"];
   let lastError = "";
 
   for (const client of clients) {
     const common = [
       "--no-playlist", "--force-ipv4", "--no-warnings", "--geo-bypass",
       "--extractor-args", "youtube:player_client=" + client,
+      "--js-runtimes", "node",
       "--socket-timeout", "30"
     ];
     if (cookieFile) common.push("--cookies", cookieFile);
@@ -121,7 +122,7 @@ async function downloadWithYtDlp(url, destination, work) {
   }
 
   const hint = cookieFile
-    ? "yt-dlp pudo autenticarse pero no encontro un formato descargable compatible para este video."
+    ? "YouTube rechazo la sesion desde este servidor aunque hay cookies configuradas. El problema es de autenticacion/anti-bot de YouTube, no de formatos."
     : "YouTube solicito autenticacion. Para contenido propio o autorizado, configura YTDLP_COOKIES_BASE64 o usa una URL directa de MP4.";
   throw new Error(hint + " " + lastError.slice(-900));
 }
