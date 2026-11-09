@@ -81,13 +81,14 @@ async function runCapture(cmd, args) {
 
 async function downloadWithYtDlp(url, destination, work) {
   const cookieFile = await createCookiesFile(work);
-  const clients = cookieFile ? ["web", "web_safari"] : ["android", "web_embedded", "tv"];
+  const clients = ["android", "ios", "web_embedded", "web", "web_safari", "tv", "mweb"];
   let lastError = "";
 
   for (const client of clients) {
     const common = [
       "--no-playlist", "--force-ipv4", "--no-warnings", "--geo-bypass",
       "--extractor-args", "youtube:player_client=" + client,
+      "--extractor-args", "youtube:player_skip=webpage,configs",
       "--js-runtimes", "node",
       "--socket-timeout", "30"
     ];
@@ -103,7 +104,8 @@ async function downloadWithYtDlp(url, destination, work) {
     const selectors = [
       "bv*+ba/b",
       "bestvideo+bestaudio/best",
-      "best[ext=mp4]/best"
+      "best[ext=mp4]/best",
+      "best"
     ];
 
     for (const selector of selectors) {
