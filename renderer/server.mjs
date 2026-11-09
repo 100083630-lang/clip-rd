@@ -67,33 +67,63 @@ async function createCookiesFile(work) {
   return file;
 }
 
+async function runCapture(cmd, args) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.on("error", (error) => resolve({ code: -1, stdout, stderr: String(error) }));
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
 async function downloadWithYtDlp(url, destination, work) {
   const cookieFile = await createCookiesFile(work);
   const clients = cookieFile ? ["web", "android", "tv", "ios"] : ["android", "tv", "web_embedded", "ios"];
   let lastError = "";
 
   for (const client of clients) {
-    const args = [
+    const common = [
       "--no-playlist", "--force-ipv4", "--no-warnings", "--geo-bypass",
       "--extractor-args", "youtube:player_client=" + client,
-      "-f", "bestvideo*+bestaudio/best",
-      "--merge-output-format", "mp4", "--remux-video", "mp4",
-      "--socket-timeout", "30", "-o", destination
+      "--socket-timeout", "30"
     ];
-    if (cookieFile) args.push("--cookies", cookieFile);
-    args.push(url);
-    try {
-      await run("yt-dlp", args);
-      return;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-      console.log("yt-dlp client " + client + " failed: " + lastError.slice(-500));
+    if (cookieFile) common.push("--cookies", cookieFile);
+
+    const formats = await runCapture("yt-dlp", [...common, "--list-formats", "--no-colors", url]);
+    if (formats.code !== 0) {
+      lastError = (formats.stderr || formats.stdout).slice(-3000);
+      console.log("yt-dlp format listing failed for " + client + ": " + lastError.slice(-500));
+      continue;
+    }
+
+    const selectors = [
+      "bv*+ba/b",
+      "bestvideo+bestaudio/best",
+      "best[ext=mp4]/best"
+    ];
+
+    for (const selector of selectors) {
+      const result = await runCapture("yt-dlp", [
+        ...common,
+        "-f", selector,
+        "--merge-output-format", "mp4",
+        "--remux-video", "mp4",
+        "-o", destination,
+        url
+      ]);
+      if (result.code === 0) return;
+      lastError = (result.stderr || result.stdout).slice(-3000);
+      console.log("yt-dlp selector " + selector + " failed for " + client + ": " + lastError.slice(-500));
     }
   }
+
   const hint = cookieFile
-    ? "yt-dlp no pudo descargar usando las cookies configuradas. Verifica que las cookies sigan vigentes y vuelve a exportarlas desde tu navegador."
-    : "YouTube solicito autenticacion. Para contenido propio o autorizado, configura YTDLP_COOKIES_BASE64 en Render con un cookies.txt en formato Netscape codificado en Base64, o usa una URL directa de MP4.";
-  throw new Error(hint + " " + lastError.slice(-700));
+    ? "yt-dlp pudo autenticarse pero no encontro un formato descargable compatible para este video."
+    : "YouTube solicito autenticacion. Para contenido propio o autorizado, configura YTDLP_COOKIES_BASE64 o usa una URL directa de MP4.";
+  throw new Error(hint + " " + lastError.slice(-900));
 }
 
 async function download(url, destination, work) {
