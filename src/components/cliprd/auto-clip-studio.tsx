@@ -93,7 +93,9 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     const check = async () => {
       try {
         const response = await fetch(agentOrigin + "/health");
-        if (!response.ok) throw new Error("Agent offline");
+        const raw = await response.text();
+        const data = raw ? JSON.parse(raw) : null;
+        if (!response.ok || !data?.ok || data?.service !== "CLIPRD Local Agent") throw new Error("Agent offline");
         if (active) setAgentStatus("online");
       } catch {
         if (active) setAgentStatus("offline");
@@ -148,7 +150,14 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
           })),
         }),
       });
-      const data = await response.json();
+      const raw = await response.text();
+      let data: any;
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        const preview = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+        throw new Error("CLIPRD Local Agent devolvió una respuesta no válida" + (preview ? ": " + preview : "") + ". Verifica que http://127.0.0.1:3847/health muestre JSON y reinicia el agente.");
+      }
       if (!response.ok) throw new Error(data.error || "El motor local no pudo generar los clips");
       const count = Array.isArray(data.outputs) ? data.outputs.length : 0;
       setPipelineMessage("✓ " + count + " clip(s) generados. Se guardaron en CLIPRD-Clips en tu computadora.");
