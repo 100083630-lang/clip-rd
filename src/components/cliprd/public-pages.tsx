@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { authClient, authEnabled } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { PersonalHome } from "./personal-home";
 import { bootstrapProfile } from "@/server/cliprd";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -48,12 +49,7 @@ function cleanInviteCode(raw: string) {
 
 // ── HOMEPAGE / PÁGINA PÚBLICA PRINCIPAL ────────────────────────────────
 export function HomePage() {
-  // CLIPRD se encuentra temporalmente en modo abierto mientras se reconstruye
-  // la autenticación. Entramos directamente al panel de trabajo.
-  if (typeof window !== "undefined") {
-    window.location.replace("/clipper/dashboard");
-  }
-  return <div style={{ padding: 24 }}>Abriendo CLIPRD Studio…</div>;
+  return <PersonalHome />;
 }
 // Alias para que no falle ningún import viejo
 export const PublicHomePage = HomePage;
