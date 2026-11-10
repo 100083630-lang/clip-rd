@@ -141,13 +141,34 @@ function clipOptions(){const a=getLib();const html=a.length?a.map((x,i)=>'<optio
 function selectClipForPublish(i){showView('publish');clipOptions();$('publishClip').value=String(i);updatePublishPreview()}
 function selectClipForCover(i){showView('cover');clipOptions();$('coverClip').value=String(i);updateCoverClip()}
 function updatePublishPreview(){const i=Number($('publishClip').value),x=getLib()[i];if(!x){$('publishPreview').textContent='Sin clip seleccionado.';return}$('publishTitle').value=x.sourceTitle||x.name||'';$('publishDescription').value=x.sourceDescription||x.description||'';$('publishPreview').textContent='🎬 Listo: '+x.name+' · descripción y hashtags originales preparados.'}
-function publishTo(platform){
+async function downloadClipFile(url,name){
+  if(!url)throw new Error('El clip no tiene un archivo disponible.');
+  try{
+    const response=await fetch(url,{mode:'cors'});
+    if(!response.ok)throw new Error('No se pudo descargar el archivo.');
+    const blob=await response.blob(),objectUrl=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=objectUrl;a.download=name||'cliprd-clip.mp4';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),15000);
+    return true;
+  }catch(error){
+    const a=document.createElement('a');a.href=url;a.download=name||'cliprd-clip.mp4';a.target='_self';document.body.appendChild(a);a.click();a.remove();
+    return false;
+  }
+}
+async function publishTo(platform){
   const i=Number($('publishClip').value),x=getLib()[i];if(!x){$('publishStatus').textContent='❌ Primero selecciona un clip.';return}
   const title=$('publishTitle').value.trim()||x.name,desc=$('publishDescription').value.trim()||x.description||'';
   const destinations={youtube:'https://studio.youtube.com/',tiktok:'https://www.tiktok.com/upload',facebook:'https://www.facebook.com/'};
+  const popup=window.open('about:blank','_blank');
+  $('publishStatus').textContent='⬇️ Descargando tu clip para '+platform+'…';
   try{navigator.clipboard.writeText((title+'\n\n'+desc).trim())}catch{}
-  window.open(destinations[platform],'_blank','noopener');
-  $('publishStatus').textContent='🚀 Se abrió '+platform+'. El título y la descripción fueron preparados. Desde la Biblioteca puedes descargar el video y su portada por separado para subirlos.';
+  try{
+    await downloadClipFile(x.url,(x.name||'cliprd-clip').replace(/[\\/:*?"<>|]/g,'_')+'.mp4');
+    $('publishStatus').textContent='✅ Clip descargado. Abriendo '+platform+' para que lo subas.';
+  }catch(error){
+    $('publishStatus').textContent='⚠️ No se pudo preparar la descarga automática: '+error.message;
+  }
+  if(popup)popup.location.href=destinations[platform];else window.open(destinations[platform],'_blank','noopener');
 }
 function downloadDescription(i){
   const x=getLib()[i];if(!x)return;
