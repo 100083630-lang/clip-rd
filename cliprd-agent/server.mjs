@@ -81,9 +81,9 @@ async function renderSource(source,clips,work,metadata={}){
     await run("ffmpeg",["-y","-ss",String(c.start),"-to",String(c.end),"-i",source,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","21","-c:a","aac","-movflags","+faststart",dest],work,20*60*1000);
     // Extract a representative frame as a separate downloadable cover.
     const coverAt=Math.max(0,Number(c.start)+Math.min(2,Math.max(0,(Number(c.end)-Number(c.start))/3)));
-    try{await run("ffmpeg",["-y","-ss",String(coverAt),"-i",source,"-frames:v","1","-q:v","2",coverDest],work,60000)}catch{}
+    try{await run("ffmpeg",["-y","-ss",String(Math.min(2,Math.max(.2,duration/3))),"-i",dest,"-frames:v","1","-q:v","2",coverDest],work,60000)}catch{}
     const duration=Math.max(1,Number(c.end)-Number(c.start)),fractions=[0.08,.27,.48,.69,.88];
-    for(let t=0;t<fractions.length;t++){const tn=base+"-thumb-"+(t+1)+".jpg",tp=path.join(jobOut,tn),at=Math.max(0,Number(c.start)+duration*fractions[t]);try{await run("ffmpeg",["-y","-ss",String(at),"-i",source,"-frames:v","1","-q:v","2",tp],work,60000);thumbNames.push(tn)}catch{}}
+    for(let t=0;t<fractions.length;t++){const tn=base+"-thumb-"+(t+1)+".jpg",tp=path.join(jobOut,tn),at=Math.max(.1,duration*fractions[t]);try{await run("ffmpeg",["-y","-ss",String(at),"-i",dest,"-frames:v","1","-q:v","2",tp],work,60000);thumbNames.push(tn)}catch{}}
     const copy=clipCopy(c,metadata);
     outputs.push({
       index:i+1,start:c.start,end:c.end,
@@ -101,8 +101,8 @@ async function renderSource(source,clips,work,metadata={}){
   }
   return{job,outputs};
 }
-async function process(sourceUrl,clips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const metadata=await getVideoMetadata(sourceUrl,work);const source=await downloadSource(sourceUrl,work);return await renderSource(source,clips,work,metadata)}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
-async function autoProcess(sourceUrl,clipLength,maxClips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const metadata=await getVideoMetadata(sourceUrl,work);const source=await downloadSource(sourceUrl,work);const clips=await audioBasedSegments(source,work,clipLength,maxClips);const result=await renderSource(source,clips,work,metadata);return{...result,clips,analysis:"audio-activity"}}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
+async function process(sourceUrl,clips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const metadata=await getVideoMetadata(sourceUrl,work);return await renderSource(source,clips,work,metadata)}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
+async function autoProcess(sourceUrl,clipLength,maxClips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const metadata=await getVideoMetadata(sourceUrl,work);const clips=await audioBasedSegments(source,work,clipLength,maxClips);const result=await renderSource(source,clips,work,metadata);return{...result,clips,analysis:"audio-activity"}}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
 
 const live={active:false,sourceUrl:"",work:"",child:null,timer:null,processed:new Set(),outputs:[],events:[],clipLength:45,maxClips:2,startedAt:null,lastError:null};
 function liveEvent(message){live.events.unshift({time:Date.now(),message});live.events=live.events.slice(0,30)}
