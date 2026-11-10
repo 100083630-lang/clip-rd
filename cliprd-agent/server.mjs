@@ -1,6 +1,6 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { mkdir, rm, readdir, stat } from "node:fs/promises";
+import { mkdir, rm, readdir, stat, access } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
@@ -13,14 +13,24 @@ const COOKIE_FILE = (process.env.YTDLP_COOKIE_FILE || "").trim();
 
 await mkdir(OUT, { recursive: true });
 
-function run(cmd, args, cwd) {
+function run(cmd, args, cwd, timeoutMs = 0) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { cwd, windowsHide: true });
     let out = "", err = "";
     p.stdout.on("data", d => out += d);
     p.stderr.on("data", d => err += d);
     p.on("error", e => reject(new Error(`${cmd} no está disponible: ${e.message}`)));
-    p.on("close", code => code === 0 ? resolve({out, err}) : reject(new Error((err || out || `${cmd} terminó con código ${code}`).slice(-5000))));
+    let timer = null;
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        p.kill();
+        reject(new Error(`${cmd} superó el tiempo máximo de espera`));
+      }, timeoutMs);
+    }
+    p.on("close", code => {
+      if (timer) clearTimeout(timer);
+      code === 0 ? resolve({out, err}) : reject(new Error((err || out || `${cmd} terminó con código ${code}`).slice(-5000)));
+    });
   });
 }
 
@@ -59,6 +69,32 @@ function safeClips(clips) {
     }
     return { start, end };
   });
+}
+
+async function commandVersion(cmd, args) {
+  try {
+    const result = await run(cmd, args, undefined, 15000);
+    return (result.out || result.err || "").trim().split(/\r?\n/)[0] || "ok";
+  } catch (error) {
+    return null;
+  }
+}
+
+async function dependencyStatus() {
+  let cookieFile = null;
+  if (COOKIE_FILE) {
+    try { await access(COOKIE_FILE); cookieFile = true; } catch { cookieFile = false; }
+  }
+  const [ytDlp, ffmpeg] = await Promise.all([
+    commandVersion("yt-dlp", ["--version"]),
+    commandVersion("ffmpeg", ["-version"])
+  ]);
+  return {
+    ytDlp,
+    ffmpeg,
+    browser: BROWSER || null,
+    cookieFile: COOKIE_FILE ? (cookieFile ? "configured" : "missing") : null
+  };
 }
 
 async function renderJob(sourceUrl, clips) {
@@ -103,7 +139,7 @@ async function renderJob(sourceUrl, clips) {
     }
 
     const files = await readdir(work);
-    const sourceName = files.find(f => /.(mp4|mkv|webm|mov)$/i.test(f));
+    const sourceName = files.find(f => /\.(mp4|mkv|webm|mov)$/i.test(f));
     if (!sourceName) throw new Error("yt-dlp terminó pero no produjo un archivo de video utilizable");
     const source = path.join(work, sourceName);
 
@@ -135,7 +171,15 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/health") {
-      return json(res, 200, { ok: true, service: "CLIPRD Local Agent", version: "1.0.2", outputDir: OUT, browser: BROWSER || null, cookieFile: COOKIE_FILE ? "configured" : null });
+      const dependencies = await dependencyStatus();
+      const ok = Boolean(dependencies.ytDlp && dependencies.ffmpeg) && dependencies.cookieFile !== "missing";
+      return json(res, ok ? 200 : 503, {
+        ok,
+        service: "CLIPRD Local Agent",
+        version: "1.0.3",
+        outputDir: OUT,
+        dependencies
+      });
     }
 
     if (req.method === "POST" && url.pathname === "/render") {
@@ -165,4 +209,4 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => console.log(`CLIPRD Local Agent v1.0.1 listo en http://${HOST}:${PORT}`));
+server.listen(PORT, HOST, () => console.log(`CLIPRD Local Agent v1.0.3 listo en http://${HOST}:${PORT}`));
