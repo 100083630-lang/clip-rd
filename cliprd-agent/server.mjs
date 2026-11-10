@@ -35,13 +35,27 @@ async function dependencyStatus(){let cookieFile=null;if(COOKIE_FILE){try{await 
 
 async function getVideoMetadata(sourceUrl,work){
   try{
-    const r=await run("yt-dlp",ytArgs(["--no-playlist","--skip-download","--print-json",sourceUrl]),work,90000);
+    const metaArgs=ytArgs(["--no-playlist","--skip-download","--write-subs","--write-auto-subs","--sub-langs","es.*,en.*","--sub-format","vtt","-o",path.join(work,"meta.%(ext)s"),"--print-json",sourceUrl]);
+    const r=await run("yt-dlp",metaArgs,work,120000);
     const line=(r.out||"").split(/\r?\n/).find(x=>x.trim().startsWith("{"));if(!line)return {};
     const j=JSON.parse(line),raw=String(j.description||"").trim(),tags=Array.isArray(j.tags)?j.tags.map(t=>String(t).replace(/^#/,"")).filter(Boolean):[];
     const found=[...new Set([...raw.matchAll(/#[\p{L}\p{N}_]+/gu)].map(m=>m[0]),...tags.map(t=>"#"+t)])];
     const text=raw.length>900?raw.slice(0,900).replace(/\s+$/,"")+"…":raw;
-    return{sourceTitle:String(j.title||""),sourceDescription:text,hashtags:found};
+    const subs=(await readdir(work).catch(()=>[])).filter(f=>/^meta\..+\.vtt$/i.test(f));
+    let transcript=[];if(subs[0]){const vtt=await readFile(path.join(work,subs[0]),"utf8").catch(()=>"");transcript=parseVtt(vtt)}
+    return{sourceTitle:String(j.title||""),sourceDescription:text,hashtags:found,transcript};
   }catch{return{}}
+}
+function parseVtt(vtt){
+  const cues=[],blocks=String(vtt||"").replace(/\r/g,"").split(/\n\n+/);
+  const toSec=t=>{const p=t.trim().split(":").map(Number);return p.length===3?p[0]*3600+p[1]*60+p[2]:p[0]*60+p[1]};
+  for(const block of blocks){const lines=block.split("\n").map(x=>x.trim()).filter(Boolean),time=lines.find(x=>x.includes("-->"));if(!time)continue;const parts=time.split("-->");if(parts.length<2)continue;const start=toSec(parts[0].replace(",",".").trim()),end=toSec(parts[1].trim().split(/\s+/)[0].replace(",",".")),text=lines.slice(lines.indexOf(time)+1).join(" ").replace(/<[^>]*>/g,"").replace(/\s+/g," ").trim();if(text&&Number.isFinite(start)&&Number.isFinite(end))cues.push({start,end,text})}
+  const clean=[];for(const c of cues){if(!clean.length||clean[clean.length-1].text!==c.text)clean.push(c)}return clean;
+}
+function clipCopy(c,metadata){
+  const cues=(metadata.transcript||[]).filter(x=>x.end>=c.start&&x.start<=c.end),spoken=cues.map(x=>x.text).join(" ").replace(/\s+/g," ").trim(),excerpt=spoken.length>520?spoken.slice(0,520).replace(/\s+\S*$/,"")+"…":spoken,first=(spoken.split(/[.!?]+\s+/).find(x=>x.trim())||spoken||"Momento destacado del video").trim(),title=first.length>88?first.slice(0,85).replace(/\s+\S*$/,"")+"…":first;
+  const sourceTag=metadata.sourceTitle?"🎬 "+metadata.sourceTitle:"🎬 CLIPRD",body=excerpt?"🔥 EN ESTE CORTE\n"+excerpt:"🔥 EN ESTE CORTE\nMomento destacado seleccionado automáticamente.",tags=(metadata.hashtags&&metadata.hashtags.length?metadata.hashtags.slice(0,12):["#CLIPRD","#clips","#shorts","#reels"]).join(" ");
+  return{title,description:[sourceTag,"",body,"",tags].join("\n"),spoken:excerpt};
 }
 async function downloadSource(sourceUrl,work){
   const template=path.join(work,"source.%(ext)s");
@@ -70,17 +84,18 @@ async function renderSource(source,clips,work,metadata={}){
     try{await run("ffmpeg",["-y","-ss",String(coverAt),"-i",source,"-frames:v","1","-q:v","2",coverDest],work,60000)}catch{}
     const duration=Math.max(1,Number(c.end)-Number(c.start)),fractions=[0.08,.27,.48,.69,.88];
     for(let t=0;t<fractions.length;t++){const tn=base+"-thumb-"+(t+1)+".jpg",tp=path.join(jobOut,tn),at=Math.max(0,Number(c.start)+duration*fractions[t]);try{await run("ffmpeg",["-y","-ss",String(at),"-i",source,"-frames:v","1","-q:v","2",tp],work,60000);thumbNames.push(tn)}catch{}}
-    const clipDescription=[metadata.sourceDescription||"🎬 Momento destacado del video.",metadata.hashtags&&metadata.hashtags.length?metadata.hashtags.join(" "):"#CLIPRD #clips #shorts #reels"].filter(Boolean).join("\n\n");
+    const copy=clipCopy(c,metadata);
     outputs.push({
       index:i+1,start:c.start,end:c.end,
       file:`/files/${encodeURIComponent(job)}/${encodeURIComponent(name)}`,
       cover:`/files/${encodeURIComponent(job)}/${encodeURIComponent(coverName)}`,
       thumbnails:thumbNames.map(t=>`/files/${encodeURIComponent(job)}/${encodeURIComponent(t)}`),
-      title:metadata.sourceTitle||`Clip ${i+1} · ${Math.round(c.start)}s–${Math.round(c.end)}s`,
+      title:copy.title,
       sourceTitle:metadata.sourceTitle||"",
       sourceDescription:metadata.sourceDescription||"",
+      clipTranscript:copy.spoken||"",
       hashtags:metadata.hashtags||[],
-      description:clipDescription,
+      description:copy.description,
       created:Date.now()
     });
   }
