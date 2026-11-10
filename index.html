@@ -10,7 +10,7 @@ button,input,select,textarea{font:inherit}.app{max-width:1240px;margin:auto;padd
 .logo{font-weight:1000;font-size:25px;letter-spacing:-1.5px}.logo span{color:#a78bfa}.status{font-size:13px;color:var(--muted)}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#64748b;margin-right:7px}.dot.on{background:var(--ok);box-shadow:0 0 15px var(--ok)}
 .nav{display:flex;gap:8px;margin:18px 0;flex-wrap:wrap}.nav button{background:#0d131d;color:var(--muted);border:1px solid var(--line);padding:10px 14px;border-radius:10px;cursor:pointer}.nav button.active{background:#201642;color:#fff;border-color:#7c3aed}
 .view{display:none}.view.active{display:block}.hero{min-height:430px;display:grid;grid-template-columns:1.2fr .8fr;gap:22px;align-items:center;padding:40px 0}.eyebrow{font-size:12px;letter-spacing:2px;font-weight:900;color:#a78bfa}.hero h1{font-size:clamp(54px,8vw,100px);line-height:.88;letter-spacing:-5px;margin:14px 0}.hero h1 b{color:#a78bfa}.lead{font-size:18px;line-height:1.65;color:var(--muted);max-width:720px}
-.card{background:linear-gradient(145deg,rgba(23,31,47,.95),rgba(10,14,23,.95));border:1px solid var(--line);border-radius:20px;padding:22px}.hero-card{min-height:300px;display:flex;flex-direction:column;justify-content:space-between}.metric{font-size:60px;font-weight:1000;letter-spacing:-4px}.row{display:flex;gap:12px;flex-wrap:wrap}.btn{border:0;border-radius:11px;padding:13px 18px;font-weight:850;cursor:pointer;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff}.btn.alt{background:#121b29;border:1px solid var(--line)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.clip{min-height:230px;padding:18px;display:flex;flex-direction:column;justify-content:end;background:linear-gradient(160deg,#202b44,#101722);border-radius:18px;border:1px solid var(--line)}.empty{grid-column:1/-1;text-align:center;padding:50px;color:var(--muted);border:1px dashed #39465a;border-radius:18px}
+.card{background:linear-gradient(145deg,rgba(23,31,47,.95),rgba(10,14,23,.95));border:1px solid var(--line);border-radius:20px;padding:22px}.hero-card{min-height:300px;display:flex;flex-direction:column;justify-content:space-between}.metric{font-size:60px;font-weight:1000;letter-spacing:-4px}.row{display:flex;gap:12px;flex-wrap:wrap}.btn{border:0;border-radius:11px;padding:13px 18px;font-weight:850;cursor:pointer;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff}.btn.alt{background:#121b29;border:1px solid var(--line)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.clip{min-height:230px;overflow:hidden;padding:18px;display:flex;flex-direction:column;justify-content:end;background:linear-gradient(160deg,#202b44,#101722);border-radius:18px;border:1px solid var(--line)}.clip-cover{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;margin-bottom:14px;background:#111}.clip-cover.placeholder{display:grid;place-items:center;font-weight:1000;color:#a78bfa;letter-spacing:4px}.empty{grid-column:1/-1;text-align:center;padding:50px;color:var(--muted);border:1px dashed #39465a;border-radius:18px}
 h2{font-size:32px;margin:8px 0 18px}label{display:block;font-size:12px;font-weight:800;color:#aeb9c9;margin:16px 0 7px}input,select,textarea{width:100%;background:#090e16;border:1px solid #303b4e;color:#fff;padding:14px;border-radius:11px}textarea{min-height:110px;resize:vertical}select{cursor:pointer}.studio{display:grid;grid-template-columns:1fr .8fr;gap:18px}.notice{margin-top:14px;padding:14px;border-radius:12px;background:#0b1220;color:var(--muted);min-height:50px}.live-player{aspect-ratio:16/9;width:100%;border:0;border-radius:16px;background:#030508}.small{font-size:13px;color:var(--muted)}.library-title{display:flex;align-items:center;justify-content:space-between}
 @media(max-width:820px){.hero,.studio{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.hero h1{letter-spacing:-3px}.top{align-items:flex-start}}
 </style>
@@ -85,11 +85,39 @@ function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>showView(b.dataset.view));
 function getLib(){try{return JSON.parse(localStorage.getItem('cliprd-library')||'[]')}catch{return[]}}
 function setLib(x){localStorage.setItem('cliprd-library',JSON.stringify(x));renderLibrary()}
-function renderLibrary(){const a=getLib(),g=$('libraryGrid');$('clipCount').textContent=a.length;g.innerHTML=a.length?a.map((x,i)=>'<article class="clip"><div class="eyebrow">CLIP '+(i+1)+'</div><h3>'+escapeHtml(x.name)+'</h3><p class="small">'+new Date(x.created).toLocaleString()+'</p><div class="row"><a class="btn" href="'+x.url+'" target="_blank" rel="noopener">▶ Ver / descargar</a><button class="btn alt" onclick="selectClipForPublish('+i+')">🚀 Publicar</button><button class="btn alt" onclick="selectClipForCover('+i+')">🖼️ Portada</button></div></article>').join(''):'<div class="empty">Tu biblioteca está vacía.<br><br>Genera clips desde el Centro de Producción.</div>'}
+function renderLibrary(){
+  const a=getLib(),g=$('libraryGrid');$('clipCount').textContent=a.length;
+  g.innerHTML=a.length?a.map((x,i)=>{
+    const cover=x.coverUrl?'<img class="clip-cover" src="'+escapeHtml(x.coverUrl)+'" alt="Portada del clip">':'<div class="clip-cover placeholder">CLIPRD</div>';
+    return '<article class="clip">'+cover+'<div class="eyebrow">CLIP '+(i+1)+'</div><h3>'+escapeHtml(x.name)+'</h3><p class="small">'+new Date(x.created).toLocaleString()+'</p><div class="row"><a class="btn" href="'+escapeHtml(x.url)+'" download>⬇ Video</a>'+(x.coverUrl?'<a class="btn alt" href="'+escapeHtml(x.coverUrl)+'" download>🖼 Portada</a>':'')+'<button class="btn alt" onclick="downloadDescription('+i+')">📝 Descripción</button><button class="btn alt" onclick="selectClipForPublish('+i+')">🚀 Subir</button></div></article>';
+  }).join(''):'<div class="empty">Tu biblioteca está vacía.<br><br>Genera clips desde el Centro de Producción.</div>'
+}
 function escapeHtml(v){return String(v||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function clearLibrary(){if(confirm('¿Eliminar la biblioteca local de esta página?'))setLib([])}
 async function checkEngine(){const s=$('engineStatus'),d=$('dot');s.textContent='Comprobando motor…';try{const r=await fetch(AGENT+'/health',{cache:'no-store'});const x=await r.json();if(!r.ok||!x.ok)throw Error(x.error||'Motor no disponible');s.textContent='Motor local conectado';d.classList.add('on');$('engineInfo').textContent='ONLINE · yt-dlp y FFmpeg detectados'}catch(e){s.textContent='Motor local desconectado';d.classList.remove('on');$('engineInfo').textContent='Inicia cliprd-agent con npm start'}}
-async function createClips(){const url=$('sourceUrl').value.trim(),len=+$('clipLength').value,max=+$('maxClips').value,st=$('jobStatus');if(!/^https?:\/\//i.test(url)){st.textContent='❌ Introduce una URL válida.';return}st.textContent='⏳ Enviando trabajo al motor local…';try{const r=await fetch(AGENT+'/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});const x=await r.json();if(!r.ok)throw Error(x.error||'Error del motor');const old=getLib(),items=(x.outputs||[]).map((o,i)=>({name:'Clip '+(i+1)+' · '+o.start+'s–'+o.end+'s',url:o.url,created:Date.now()}));setLib([...items,...old]);st.textContent='✅ '+items.length+' clips generados y guardados en la biblioteca.';showView('library')}catch(e){st.textContent='❌ '+e.message}}
+async function createClips(){
+  const url=$('sourceUrl').value.trim(),len=+$('clipLength').value,max=+$('maxClips').value,st=$('jobStatus');
+  if(!/^https?:\/\//i.test(url)){st.textContent='❌ Introduce una URL válida.';return}
+  st.textContent='⏳ Enviando trabajo al motor local…';
+  try{
+    const payload={sourceUrl:url,clipLength:len,maxClips:max};
+    let r=await fetch(AGENT+'/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    if(r.status===404){r=await fetch(AGENT+'/api/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})}
+    let x={};try{x=await r.json()}catch{}
+    if(!r.ok)throw Error(x.error||('El motor respondió HTTP '+r.status));
+    const old=getLib(),items=(x.outputs||[]).map((o,i)=>({
+      name:o.title||('Clip '+(i+1)+' · '+o.start+'s–'+o.end+'s'),
+      url:o.url,
+      coverUrl:o.coverUrl||o.cover||'',
+      description:o.description||'🎬 Clip generado con CLIPRD. #clip #shorts #reels',
+      created:o.created||Date.now()
+    }));
+    if(!items.length)throw Error('El motor terminó sin devolver clips.');
+    setLib([...items,...old]);
+    st.textContent='✅ '+items.length+' clips generados. Cada uno incluye video, portada y descripción descargables por separado.';
+    showView('library');
+  }catch(e){st.textContent='❌ '+e.message}
+}
 function youtubeId(url){try{const u=new URL(url);if(u.hostname.includes('youtu.be'))return u.pathname.split('/').filter(Boolean)[0];if(u.searchParams.get('v'))return u.searchParams.get('v');const p=u.pathname.match(/\/(live|embed|shorts)\/([^/?]+)/);return p?p[2]:null}catch{return null}}
 function openLive(){const url=$('liveUrl').value.trim(),id=youtubeId(url);if(!id){$('liveStatus').textContent='❌ No pude identificar una URL de YouTube válida.';return false}$('liveFrame').src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?autoplay=1&mute=1';return true}
 let liveTimer=null;
@@ -104,13 +132,17 @@ function selectClipForPublish(i){showView('publish');clipOptions();$('publishCli
 function selectClipForCover(i){showView('cover');clipOptions();$('coverClip').value=String(i);updateCoverClip()}
 function updatePublishPreview(){const i=Number($('publishClip').value),x=getLib()[i];$('publishPreview').textContent=x?'🎬 Listo: '+x.name:'Sin clip seleccionado.'}
 function publishTo(platform){
-  const i=Number($('publishClip').value),x=getLib()[i];if(!x){$('publishStatus').textContent='❌ Primero genera o selecciona un clip.';return}
-  const title=$('publishTitle').value.trim()||x.name,desc=$('publishDescription').value.trim();
+  const i=Number($('publishClip').value),x=getLib()[i];if(!x){$('publishStatus').textContent='❌ Primero selecciona un clip.';return}
+  const title=$('publishTitle').value.trim()||x.name,desc=$('publishDescription').value.trim()||x.description||'';
   const destinations={youtube:'https://studio.youtube.com/',tiktok:'https://www.tiktok.com/upload',facebook:'https://www.facebook.com/'};
-  window.open(x.url,'_blank','noopener');
-  setTimeout(()=>window.open(destinations[platform],'_blank','noopener'),350);
-  $('publishStatus').textContent='📦 Se abrió tu clip y el portal oficial de '+platform+'. Descarga/sube el MP4 y pega el texto preparado. La publicación directa automática requiere conectar una cuenta autorizada mediante su API oficial.';
   try{navigator.clipboard.writeText((title+'\n\n'+desc).trim())}catch{}
+  window.open(destinations[platform],'_blank','noopener');
+  $('publishStatus').textContent='🚀 Se abrió '+platform+'. El título y la descripción fueron preparados. Desde la Biblioteca puedes descargar el video y su portada por separado para subirlos.';
+}
+function downloadDescription(i){
+  const x=getLib()[i];if(!x)return;
+  const text=(x.name||'CLIPRD')+'\n\n'+(x.description||'🎬 Clip generado con CLIPRD. #clip #shorts #reels');
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='cliprd-descripcion.txt';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 let coverImg=null;
 function loadCoverImage(e){const file=e.target.files&&e.target.files[0];if(!file)return;const img=new Image();img.onload=()=>{coverImg=img;drawCover()};img.src=URL.createObjectURL(file)}
