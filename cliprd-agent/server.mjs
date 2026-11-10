@@ -1,6 +1,6 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { mkdir, rm, readdir, stat, access } from "node:fs/promises";
+import { mkdir, rm, readdir, stat, access, readFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -53,9 +53,27 @@ function parseVtt(vtt){
   const clean=[];for(const c of cues){if(!clean.length||clean[clean.length-1].text!==c.text)clean.push(c)}return clean;
 }
 function clipCopy(c,metadata){
-  const cues=(metadata.transcript||[]).filter(x=>x.end>=c.start&&x.start<=c.end),spoken=cues.map(x=>x.text).join(" ").replace(/\s+/g," ").trim(),excerpt=spoken.length>520?spoken.slice(0,520).replace(/\s+\S*$/,"")+"…":spoken,first=(spoken.split(/[.!?]+\s+/).find(x=>x.trim())||spoken||"Momento destacado del video").trim(),title=first.length>88?first.slice(0,85).replace(/\s+\S*$/,"")+"…":first;
-  const sourceTag=metadata.sourceTitle?"🎬 "+metadata.sourceTitle:"🎬 CLIPRD",body=excerpt?"🔥 EN ESTE CORTE\n"+excerpt:"🔥 EN ESTE CORTE\nMomento destacado seleccionado automáticamente.",tags=(metadata.hashtags&&metadata.hashtags.length?metadata.hashtags.slice(0,12):["#CLIPRD","#clips","#shorts","#reels"]).join(" ");
-  return{title,description:[sourceTag,"",body,"",tags].join("\n"),spoken:excerpt};
+  const cues=(metadata.transcript||[]).filter(x=>x.end>=c.start&&x.start<=c.end);
+  const spoken=cues.map(x=>x.text).join(" ").replace(/\s+/g," ").trim();
+  const sentences=spoken.split(/(?<=[.!?])\s+/).map(x=>x.trim()).filter(Boolean);
+  const context=(sentences.length?sentences:[spoken||"En este corte ocurre un momento destacado del contenido."])
+    .slice(0,2).map(x=>x.length>180?x.slice(0,177).replace(/\s+\S*$/,"")+"…":x);
+  const hook=(context[0]||metadata.sourceTitle||"Mira este momento").replace(/[\r\n]+/g," ").trim();
+  const title=(hook.length>82?hook.slice(0,79).replace(/\s+\S*$/,"")+"…":hook)||"🔥 EL MOMENTO QUE NADIE ESPERABA";
+  const rdTags=["#RD","#RepublicaDominicana","#SantoDomingo","#Dominicano","#ViralRD","#TendenciaRD","#ClipRD","#Alofoke","#HumorRD","#FYP"];
+  const sourceTags=(metadata.hashtags||[]).map(x=>String(x).startsWith("#")?String(x):"#"+String(x).replace(/\s+/g,"")).filter(Boolean);
+  const tags=[...new Set([...sourceTags,...rdTags])].slice(0,10);
+  const description=[
+    "🔥 "+title,
+    "",
+    context[0]||"Momento destacado del corte.",
+    context[1]||"Un fragmento seleccionado automáticamente para que no te pierdas lo más importante.",
+    "",
+    "👉 Sígueme para más clips y momentos virales.",
+    "",
+    tags.join(" ")
+  ].join("\n");
+  return{title,description,spoken:spoken||"Transcripción no disponible para este corte.",hashtags:tags};
 }
 async function downloadSource(sourceUrl,work){
   const template=path.join(work,"source.%(ext)s");
@@ -78,13 +96,35 @@ async function renderSource(source,clips,work,metadata={}){
   const job=crypto.randomUUID(),jobOut=path.join(OUT,job);await mkdir(jobOut,{recursive:true});const outputs=[];
   for(let i=0;i<clips.length;i++){
     const c=clips[i],base=`clip-${String(i+1).padStart(2,"0")}-${Math.round(c.start)}-${Math.round(c.end)}`,name=base+".mp4",coverName=base+".jpg",dest=path.join(jobOut,name),coverDest=path.join(jobOut,coverName),thumbNames=[];
+    const duration=Math.max(1,Number(c.end)-Number(c.start));
     await run("ffmpeg",["-y","-ss",String(c.start),"-to",String(c.end),"-i",source,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","21","-c:a","aac","-movflags","+faststart",dest],work,20*60*1000);
-    // Extract a representative frame as a separate downloadable cover.
-    const coverAt=Math.max(0,Number(c.start)+Math.min(2,Math.max(0,(Number(c.end)-Number(c.start))/3)));
-    try{await run("ffmpeg",["-y","-ss",String(Math.min(2,Math.max(.2,duration/3))),"-i",dest,"-frames:v","1","-q:v","2",coverDest],work,60000)}catch{}
-    const duration=Math.max(1,Number(c.end)-Number(c.start)),fractions=[0.08,.27,.48,.69,.88];
-    for(let t=0;t<fractions.length;t++){const tn=base+"-thumb-"+(t+1)+".jpg",tp=path.join(jobOut,tn),at=Math.max(.1,duration*fractions[t]);try{await run("ffmpeg",["-y","-ss",String(at),"-i",dest,"-frames:v","1","-q:v","2",tp],work,60000);thumbNames.push(tn)}catch{}}
+    // Los 5 fotogramas SIEMPRE salen del MP4 final del corte.
+    const fractions=[0.08,.27,.48,.69,.88];
+    for(let t=0;t<fractions.length;t++){
+      const tn=base+"-thumb-"+(t+1)+".jpg",tp=path.join(jobOut,tn),at=Math.max(.1,duration*fractions[t]);
+      try{
+        await run("ffmpeg",["-y","-ss",String(at),"-i",dest,"-frames:v","1","-q:v","2",tp],work,60000);
+        await stat(tp);thumbNames.push(tn);
+      }catch{}
+    }
     const copy=clipCopy(c,metadata);
+    // Portada automática 9:16. Se intenta crear con título grande; si drawtext no está disponible,
+    // se conserva una portada visual limpia desde el fotograma central.
+    const coverAt=Math.max(.1,duration*.48);
+    const safeTitle=(copy.title||"MOMENTO VIRAL").replace(/['\\:\n\r]/g," ").slice(0,70);
+    const filter=[
+      "scale=1080:1920:force_original_aspect_ratio=increase",
+      "crop=1080:1920",
+      "eq=contrast=1.08:saturation=1.12",
+      "drawbox=x=0:y=1320:w=1080:h=600:color=black@0.68:t=fill",
+      "drawtext=font='Arial':text='"+safeTitle.replace(/'/g,"\\'")+"':fontcolor=white:fontsize=72:x=54:y=1450:box=0"
+    ].join(",");
+    try{
+      await run("ffmpeg",["-y","-ss",String(coverAt),"-i",dest,"-frames:v","1","-vf",filter,"-q:v","2",coverDest],work,60000);
+      await stat(coverDest);
+    }catch{
+      try{await run("ffmpeg",["-y","-ss",String(coverAt),"-i",dest,"-frames:v","1","-vf","scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920","-q:v","2",coverDest],work,60000)}catch{}
+    }
     outputs.push({
       index:i+1,start:c.start,end:c.end,
       file:`/files/${encodeURIComponent(job)}/${encodeURIComponent(name)}`,
@@ -93,15 +133,15 @@ async function renderSource(source,clips,work,metadata={}){
       title:copy.title,
       sourceTitle:metadata.sourceTitle||"",
       sourceDescription:metadata.sourceDescription||"",
-      clipTranscript:copy.spoken||"",
-      hashtags:metadata.hashtags||[],
+      clipTranscript:copy.spoken,
+      hashtags:copy.hashtags,
       description:copy.description,
       created:Date.now()
     });
   }
   return{job,outputs};
 }
-async function process(sourceUrl,clips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const metadata=await getVideoMetadata(sourceUrl,work);return await renderSource(source,clips,work,metadata)}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
+async function processJob(sourceUrl,clips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const metadata=await getVideoMetadata(sourceUrl,work);return await renderSource(source,clips,work,metadata)}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
 async function autoProcess(sourceUrl,clipLength,maxClips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const metadata=await getVideoMetadata(sourceUrl,work);const clips=await audioBasedSegments(source,work,clipLength,maxClips);const result=await renderSource(source,clips,work,metadata);return{...result,clips,analysis:"audio-activity"}}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
 
 const live={active:false,sourceUrl:"",work:"",child:null,timer:null,processed:new Set(),outputs:[],events:[],clipLength:45,maxClips:2,startedAt:null,lastError:null};
@@ -140,8 +180,8 @@ function liveStatus(){return{active:live.active,sourceUrl:live.sourceUrl,started
 const server=http.createServer(async(req,res)=>{try{
   if(req.method==="OPTIONS"){res.writeHead(204,cors());return res.end()}
   const url=new URL(req.url,`http://${req.headers.host}`);
-  if(req.method==="GET"&&url.pathname==="/health"){const dependencies=await dependencyStatus();const ok=Boolean(dependencies.ytDlp&&dependencies.ffmpeg)&&dependencies.cookieFile!=="missing";return json(res,ok?200:503,{ok,service:"CLIPRD Local Agent",version:"2.1.0",outputDir:OUT,dependencies,features:{autoClips:"audio-activity",liveMonitor:"rolling-segments"}})}
-  if(req.method==="POST"&&url.pathname==="/render"){const b=await body(req);const result=await process(safeUrl(b.sourceUrl),safeClips(b.clips));const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t)}));return json(res,200,result)}
+  if(req.method==="GET"&&url.pathname==="/health"){const dependencies=await dependencyStatus();const ok=Boolean(dependencies.ytDlp&&dependencies.ffmpeg)&&dependencies.cookieFile!=="missing";return json(res,ok?200:503,{ok,service:"CLIPRD Local Agent",version:"2.2.0",outputDir:OUT,dependencies,features:{autoClips:"audio-activity",liveMonitor:"rolling-segments"}})}
+  if(req.method==="POST"&&url.pathname==="/render"){const b=await body(req);const result=await processJob(safeUrl(b.sourceUrl),safeClips(b.clips));const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t)}));return json(res,200,result)}
   if(req.method==="POST"&&url.pathname==="/auto-clips"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(8,Number(b.maxClips)||4));const result=await autoProcess(safeUrl(b.sourceUrl),len,max);const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t)}));return json(res,200,result)}
   if(req.method==="POST"&&url.pathname==="/live/start"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(4,Number(b.maxClips)||2));await startLive(safeUrl(b.sourceUrl),len,max);return json(res,200,liveStatus())}
   if(req.method==="POST"&&url.pathname==="/live/stop"){await stopLive();return json(res,200,liveStatus())}
@@ -151,4 +191,4 @@ const server=http.createServer(async(req,res)=>{try{
   if(req.method==="POST"&&url.pathname==="/api/auto-clips"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(8,Number(b.maxClips)||4));const result=await autoProcess(safeUrl(b.sourceUrl),len,max);const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t)}));return json(res,200,result)}
   return json(res,404,{error:"Not found",path:url.pathname,service:"CLIPRD Local Agent"});
 }catch(error){return json(res,400,{error:error instanceof Error?error.message:String(error)})}});
-server.listen(PORT,HOST,()=>console.log(`CLIPRD Local Agent v2.1.0 listo en http://${HOST}:${PORT}`));
+server.listen(PORT,HOST,()=>console.log(`CLIPRD Local Agent v2.2.0 listo en http://${HOST}:${PORT}`));
