@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, Bot, Check, ChevronRight, CircleDot, Clock3, FileText, Flame,
-  MonitorPlay, Pause, Play, Radio, Scissors, Sparkles, Upload, Video,
+  MonitorPlay, Pause, Play, Radio, Scissors, Sparkles, Video,
   WandSparkles, Zap,
 } from "lucide-react";
 import { Shell, PageTitle } from "./chrome";
@@ -55,6 +55,20 @@ function scoreLine(text: string, index: number, mode: DurationMode): Segment {
     reason: tags.length ? tags.join(" + ") + " + contexto completo" : "Claridad + duración óptima",
     tags: tags.slice(0, 4),
   };
+}
+
+function liveEmbedUrl(value: string) {
+  try {
+    const u = new URL(value.trim());
+    if (u.hostname.includes("youtube.com") || u.hostname === "youtu.be") {
+      let id = "";
+      if (u.hostname === "youtu.be") id = u.pathname.split("/").filter(Boolean)[0] || "";
+      else if (u.pathname.startsWith("/embed/")) id = u.pathname.split("/")[2] || "";
+      else id = u.searchParams.get("v") || "";
+      return id ? "https://www.youtube.com/embed/" + encodeURIComponent(id) + "?autoplay=1&mute=1&playsinline=1" : "";
+    }
+    return "";
+  } catch { return ""; }
 }
 
 function analyze(text: string, mode: DurationMode) {
@@ -111,23 +125,10 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
 
   useEffect(() => {
     if (!liveOn) return;
-    const timer = window.setInterval(() => {
-      setLiveSeconds((s) => s + 1);
-      if (Math.random() > 0.7) {
-        const score = 76 + Math.floor(Math.random() * 23);
-        const item: Segment = {
-          id: Date.now(), start: stamp(liveSeconds), end: stamp(liveSeconds + 38), seconds: 38, score,
-          title: score > 90 ? "Momento fuerte detectado en directo" : "Cambio de intensidad detectado",
-          reason: score > 90 ? "Pico de emoción + posible hook" : "Variación de energía y conversación",
-          tags: score > 90 ? ["LIVE", "Pico", "Revisión"] : ["LIVE", "Actividad"],
-        };
-        setClips((current) => [item, ...current].slice(0, 12));
-        setSelected((current) => score > 90 ? [item.id, ...current].slice(0, topN) : current);
-        setEvents((current) => [`${stamp(liveSeconds)} · Momento detectado · Score ${score}/100`, ...current].slice(0, 6));
-      }
-    }, 1000);
+    const timer = window.setInterval(() => setLiveSeconds((s) => s + 1), 1000);
     return () => window.clearInterval(timer);
-  }, [liveOn, liveSeconds, topN]);
+  }, [liveOn]);
+
 
   async function sendToPipeline(items: Segment[]) {
     const selectedItems = items.filter((x) => selected.includes(x.id));
@@ -292,12 +293,19 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
           <div className="card overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border p-5">
               <div><div className="flex items-center gap-2"><CircleDot className={`size-5 ${liveOn ? "text-danger" : "text-muted"}`} /><h2 className="text-xl font-black">Live Intelligence Monitor</h2></div><p className="mt-1 text-sm text-muted">Conecta una fuente que controles o tengas autorización para procesar.</p></div>
-              <button onClick={() => { if (!liveOn && !liveUrl.trim()) { setEvents(["Añade una fuente Live autorizada para iniciar."]); return; } setLiveOn((v) => !v); }} className={`btn ${liveOn ? "btn-danger" : "btn-primary"}`}>{liveOn ? <><Pause className="size-4" /> Detener motor</> : <><Play className="size-4" /> Iniciar monitor</>}</button>
+              <button onClick={() => { if (!liveOn && !liveEmbedUrl(liveUrl)) { setEvents(["Introduce una URL de YouTube válida para verla en el monitor."]); return; } setLiveOn((v) => !v); setEvents((current) => [!liveOn ? "Monitor iniciado · reproducción real en pantalla" : "Monitor detenido", ...current].slice(0, 6)); }} className={`btn ${liveOn ? "btn-danger" : "btn-primary"}`}>{liveOn ? <><Pause className="size-4" /> Detener motor</> : <><Play className="size-4" /> Iniciar monitor</>}</button>
             </div>
             <div className="p-5">
-              <label className="field"><span className="label">FUENTE LIVE AUTORIZADA</span><input className="input" value={liveUrl} onChange={(e) => setLiveUrl(e.target.value)} placeholder="https://… fuente conectada/autorizada" /></label>
-              <div className="mt-4 aspect-video rounded-2xl border border-border bg-[radial-gradient(circle_at_center,rgba(46,255,125,.12),transparent_55%)] p-6">
-                <div className="flex h-full flex-col justify-between"><div className="flex justify-between"><span className={`rounded-full px-3 py-1 text-xs font-black ${liveOn ? "bg-danger/15 text-danger" : "bg-surface-2 text-muted"}`}>{liveOn ? "● LIVE ANALYZING" : "● OFFLINE"}</span><span className="font-mono text-sm text-muted">{stamp(liveSeconds)}</span></div><div><Activity className="mb-3 size-10 text-neon" /><h3 className="text-3xl font-black">El motor escucha señales, no inventa clips.</h3><p className="mt-2 max-w-xl text-sm text-muted">Los momentos de alta puntuación entran automáticamente a la cola de revisión.</p></div></div>
+              <label className="field"><span className="label">YOUTUBE LIVE</span><input className="input" value={liveUrl} onChange={(e) => { setLiveUrl(e.target.value); setLiveOn(false); setLiveSeconds(0); }} placeholder="https://www.youtube.com/watch?v=... (en directo)" /><p className="mt-2 text-xs text-muted">Por ahora el monitor visual admite enlaces de YouTube. No se simulan detecciones: los eventos solo provienen del procesamiento real.</p></label>
+              <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-border bg-black">
+                {liveOn && liveEmbedUrl(liveUrl) ? (
+                  <iframe title="CLIPRD Live Monitor" src={liveEmbedUrl(liveUrl)} className="h-full w-full border-0" allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
+                ) : (
+                  <div className="flex h-full flex-col justify-between p-6 bg-[radial-gradient(circle_at_center,rgba(46,255,125,.12),transparent_55%)]">
+                    <div className="flex justify-between"><span className="rounded-full bg-surface-2 px-3 py-1 text-xs font-black text-muted">● MONITOR LISTO</span><span className="font-mono text-sm text-muted">{stamp(liveSeconds)}</span></div>
+                    <div><MonitorPlay className="mb-3 size-10 text-neon" /><h3 className="text-3xl font-black">Pega un enlace de YouTube Live.</h3><p className="mt-2 max-w-xl text-sm text-muted">Al iniciar, CLIPRD muestra la transmisión real en este panel. La detección automática de clips requiere que el motor local capture y analice la fuente autorizada.</p></div>
+                  </div>
+                )}
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3"><Metric icon={<Flame className="size-4" />} label="Momentos" value={String(clips.length)} /><Metric icon={<Activity className="size-4" />} label="Score medio" value={`${avg}/100`} /><Metric icon={<Scissors className="size-4" />} label="En cola" value={String(selected.length)} /></div>
             </div>
