@@ -93,8 +93,9 @@ function renderLibrary(){
     const thumbs=Array.isArray(x.thumbnails)&&x.thumbnails.length?x.thumbnails:[x.coverUrl].filter(Boolean);
     const cover=x.coverUrl?'<img class="clip-cover" src="'+escapeHtml(x.coverUrl)+'" alt="Portada seleccionada">':'<div class="clip-cover placeholder">CLIPRD</div>';
     const story=x.clipTranscript?'<div class="clip-story"><strong>🧠 Lo que está pasando en este corte</strong>'+escapeHtml(x.clipTranscript)+'</div>':'';
+    const visual=thumbs.length?'<div class="eyebrow">📸 '+thumbs.length+' fotogramas automáticos</div>':'<div class="eyebrow">⏳ Fotogramas no disponibles en este clip antiguo</div>';
     const strip=thumbs.length?'<div class="thumb-strip">'+thumbs.map((u,n)=>'<button class="thumb-choice '+(u===x.coverUrl?'active':'')+'" onclick="chooseThumbnail('+i+','+n+')"><img src="'+escapeHtml(u)+'" alt="Miniatura '+(n+1)+'"></button>').join('')+'</div>':'';
-    return '<article class="clip">'+cover+strip+'<div class="eyebrow">CLIP '+(i+1)+'</div><h3>'+escapeHtml(x.name)+'</h3><p class="small">'+new Date(x.created).toLocaleString()+'</p><div class="row"><a class="btn" href="'+escapeHtml(x.url)+'" download>⬇ Video</a>'+(x.coverUrl?'<a class="btn alt" href="'+escapeHtml(x.coverUrl)+'" download>🖼 Portada</a>':'')+'<button class="btn alt" onclick="downloadDescription('+i+')">📝 Descripción</button><button class="btn alt" onclick="selectClipForPublish('+i+')">🚀 Subir</button><button class="btn alt" onclick="selectClipForCover('+i+')">✨ Diseñar portada</button></div></article>';
+    return '<article class="clip">'+cover+visual+strip+'<div class="eyebrow">CLIP '+(i+1)+'</div><h3>'+escapeHtml(x.name)+'</h3><p class="small">'+new Date(x.created).toLocaleString()+'</p><div class="row"><a class="btn" href="'+escapeHtml(x.url)+'" download>⬇ Video</a>'+(x.coverUrl?'<a class="btn alt" href="'+escapeHtml(x.coverUrl)+'" download>🖼 Portada</a>':'')+'<button class="btn alt" onclick="downloadDescription('+i+')">📝 Descripción</button><button class="btn alt" onclick="selectClipForPublish('+i+')">🚀 Subir</button><button class="btn alt" onclick="selectClipForCover('+i+')">✨ Diseñar portada</button></div></article>';
   }).join(''):'<div class="empty">Tu biblioteca está vacía.<br><br>Genera clips desde el Centro de Producción.</div>'
 }
 function chooseThumbnail(i,n){const lib=getLib(),x=lib[i];if(!x||!Array.isArray(x.thumbnails)||!x.thumbnails[n])return;x.coverUrl=x.thumbnails[n];lib[i]=x;setLib(lib)}
@@ -126,7 +127,7 @@ async function createClips(){
     }));
     if(!items.length)throw Error('El motor terminó sin devolver clips.');
     setLib([...items,...old]);
-    st.textContent='✅ '+items.length+' clips generados. Cada uno incluye video, portada y descripción descargables por separado.';
+    st.textContent='✅ '+items.length+' clips listos. Se generaron automáticamente descripción contextual + portada + fotogramas. Revisa la Biblioteca.';
     showView('library');
   }catch(e){st.textContent='❌ '+e.message}
 }
