@@ -52,7 +52,22 @@ async function audioBasedSegments(source,work,clipLength,maxClips){
 }
 async function renderSource(source,clips,work){
   const job=crypto.randomUUID(),jobOut=path.join(OUT,job);await mkdir(jobOut,{recursive:true});const outputs=[];
-  for(let i=0;i<clips.length;i++){const c=clips[i],name=`clip-${String(i+1).padStart(2,"0")}-${Math.round(c.start)}-${Math.round(c.end)}.mp4`,dest=path.join(jobOut,name);await run("ffmpeg",["-y","-ss",String(c.start),"-to",String(c.end),"-i",source,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","21","-c:a","aac","-movflags","+faststart",dest],work,20*60*1000);outputs.push({index:i+1,start:c.start,end:c.end,file:`/files/${encodeURIComponent(job)}/${encodeURIComponent(name)}`})}return{job,outputs};
+  for(let i=0;i<clips.length;i++){
+    const c=clips[i],base=`clip-${String(i+1).padStart(2,"0")}-${Math.round(c.start)}-${Math.round(c.end)}`,name=base+".mp4",coverName=base+".jpg",dest=path.join(jobOut,name),coverDest=path.join(jobOut,coverName);
+    await run("ffmpeg",["-y","-ss",String(c.start),"-to",String(c.end),"-i",source,"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf","21","-c:a","aac","-movflags","+faststart",dest],work,20*60*1000);
+    // Extract a representative frame as a separate downloadable cover.
+    const coverAt=Math.max(0,Number(c.start)+Math.min(2,Math.max(0,(Number(c.end)-Number(c.start))/3)));
+    try{await run("ffmpeg",["-y","-ss",String(coverAt),"-i",source,"-frames:v","1","-q:v","2",coverDest],work,60000)}catch{}
+    outputs.push({
+      index:i+1,start:c.start,end:c.end,
+      file:`/files/${encodeURIComponent(job)}/${encodeURIComponent(name)}`,
+      cover:`/files/${encodeURIComponent(job)}/${encodeURIComponent(coverName)}`,
+      title:`Clip ${i+1} · ${Math.round(c.start)}s–${Math.round(c.end)}s`,
+      description:`🎬 Momento destacado del video.\n\n⏱️ ${Math.round(c.start)}s–${Math.round(c.end)}s\n\n#CLIPRD #clips #shorts #reels`,
+      created:Date.now()
+    });
+  }
+  return{job,outputs};
 }
 async function process(sourceUrl,clips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);return await renderSource(source,clips,work)}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
 async function autoProcess(sourceUrl,clipLength,maxClips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const clips=await audioBasedSegments(source,work,clipLength,maxClips);const result=await renderSource(source,clips,work);return{...result,clips,analysis:"audio-activity"}}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
@@ -94,12 +109,14 @@ const server=http.createServer(async(req,res)=>{try{
   if(req.method==="OPTIONS"){res.writeHead(204,cors());return res.end()}
   const url=new URL(req.url,`http://${req.headers.host}`);
   if(req.method==="GET"&&url.pathname==="/health"){const dependencies=await dependencyStatus();const ok=Boolean(dependencies.ytDlp&&dependencies.ffmpeg)&&dependencies.cookieFile!=="missing";return json(res,ok?200:503,{ok,service:"CLIPRD Local Agent",version:"2.0.0",outputDir:OUT,dependencies,features:{autoClips:"audio-activity",liveMonitor:"rolling-segments"}})}
-  if(req.method==="POST"&&url.pathname==="/render"){const b=await body(req);const result=await process(safeUrl(b.sourceUrl),safeClips(b.clips));const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file}));return json(res,200,result)}
-  if(req.method==="POST"&&url.pathname==="/auto-clips"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(8,Number(b.maxClips)||4));const result=await autoProcess(safeUrl(b.sourceUrl),len,max);const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file}));return json(res,200,result)}
+  if(req.method==="POST"&&url.pathname==="/render"){const b=await body(req);const result=await process(safeUrl(b.sourceUrl),safeClips(b.clips));const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover}));return json(res,200,result)}
+  if(req.method==="POST"&&url.pathname==="/auto-clips"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(8,Number(b.maxClips)||4));const result=await autoProcess(safeUrl(b.sourceUrl),len,max);const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover}));return json(res,200,result)}
   if(req.method==="POST"&&url.pathname==="/live/start"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(4,Number(b.maxClips)||2));await startLive(safeUrl(b.sourceUrl),len,max);return json(res,200,liveStatus())}
   if(req.method==="POST"&&url.pathname==="/live/stop"){await stopLive();return json(res,200,liveStatus())}
   if(req.method==="GET"&&url.pathname==="/live/status")return json(res,200,liveStatus());
-  if(req.method==="GET"&&url.pathname.startsWith("/files/")){const rel=decodeURIComponent(url.pathname.slice(7)),target=path.resolve(OUT,rel);if(!target.startsWith(OUT+path.sep))return json(res,403,{error:"Ruta inválida"});const info=await stat(target);if(!info.isFile())return json(res,404,{error:"Archivo no encontrado"});res.writeHead(200,{"content-type":"video/mp4","content-length":info.size,"access-control-allow-origin":"*"});return createReadStream(target).pipe(res)}
-  return json(res,404,{error:"Not found"});
+  if(req.method==="GET"&&url.pathname.startsWith("/files/")){const rel=decodeURIComponent(url.pathname.slice(7)),target=path.resolve(OUT,rel);if(!target.startsWith(OUT+path.sep))return json(res,403,{error:"Ruta inválida"});const info=await stat(target);if(!info.isFile())return json(res,404,{error:"Archivo no encontrado"});res.writeHead(200,{"content-type":target.toLowerCase().endsWith(".jpg")?"image/jpeg":"video/mp4","content-length":info.size,"content-disposition":"inline","access-control-allow-origin":"*"});return createReadStream(target).pipe(res)}
+  // Backward-compatible aliases for older frontend builds.
+  if(req.method==="POST"&&url.pathname==="/api/auto-clips"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(8,Number(b.maxClips)||4));const result=await autoProcess(safeUrl(b.sourceUrl),len,max);const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover}));return json(res,200,result)}
+  return json(res,404,{error:"Not found",path:url.pathname,service:"CLIPRD Local Agent"});
 }catch(error){return json(res,400,{error:error instanceof Error?error.message:String(error)})}});
 server.listen(PORT,HOST,()=>console.log(`CLIPRD Local Agent v2.0.0 listo en http://${HOST}:${PORT}`));
