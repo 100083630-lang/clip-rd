@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Shell, PageTitle } from "./chrome";
 import { Link } from "@tanstack/react-router";
+import { addClipLibrary } from "./clip-library";
 import type { Profile } from "@/lib/cliprd/types";
 
 type Segment = {
@@ -162,7 +163,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
       }
       if (!response.ok) throw new Error(data.error || "El motor local no pudo generar los clips");
       const count = Array.isArray(data.outputs) ? data.outputs.length : 0;
-      if (Array.isArray(data.outputs)) setOutputs(data.outputs);
+      if (Array.isArray(data.outputs)) { setOutputs(data.outputs); addClipLibrary(data.outputs); }
       setPipelineMessage("✓ " + count + " clip(s) generados. Se guardaron en CLIPRD-Clips en tu computadora.");
       setEvents((current) => ["Render local completado · " + count + " clips", ...current].slice(0, 6));
       if (data.outputs?.[0]?.url) window.open(data.outputs[0].url, "_blank", "noopener,noreferrer");
@@ -182,7 +183,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
       const response = await fetch(agentOrigin + "/auto-clips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: sourceUrl.trim(), clipLength: seconds, maxClips: topN }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || "No se pudo completar el análisis automático");
       const generated: Segment[] = (data.clips || []).map((x: any, i: number) => ({ id: Date.now()+i, start: stamp(Math.round(x.start)), end: stamp(Math.round(x.end)), seconds: Math.round(x.end-x.start), score: 90-i, title: "Momento detectado automáticamente", reason: "Zona activa de audio", tags: ["AUTO","AUDIO"] }));
-      setClips(generated); setSelected(generated.map(x=>x.id)); setOutputs(data.outputs || []); setPipelineMessage("✓ Selección automática terminada: " + generated.length + " clips reales generados.");
+      setClips(generated); setSelected(generated.map(x=>x.id)); setOutputs(data.outputs || []); if (Array.isArray(data.outputs)) addClipLibrary(data.outputs); setPipelineMessage("✓ Selección automática terminada: " + generated.length + " clips reales generados.");
     } catch (error) { setPipelineMessage(error instanceof Error ? error.message : "Error en la selección automática"); } finally { setUploading(false); }
   }
 
