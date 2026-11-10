@@ -5,6 +5,7 @@ import {
   WandSparkles, Zap,
 } from "lucide-react";
 import { Shell, PageTitle } from "./chrome";
+import { Link } from "@tanstack/react-router";
 import type { Profile } from "@/lib/cliprd/types";
 
 type Segment = {
@@ -83,6 +84,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
   const [liveOn, setLiveOn] = useState(false);
   const [liveSeconds, setLiveSeconds] = useState(0);
   const [events, setEvents] = useState<string[]>(["Motor listo. Esperando fuente autorizada."]);
+  const [outputs, setOutputs] = useState<{ url: string; file: string; index: number }[]>([]);
   const videoInput = useRef<HTMLInputElement>(null);
   const transcriptInput = useRef<HTMLInputElement>(null);
 
@@ -160,6 +162,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
       }
       if (!response.ok) throw new Error(data.error || "El motor local no pudo generar los clips");
       const count = Array.isArray(data.outputs) ? data.outputs.length : 0;
+      if (Array.isArray(data.outputs)) setOutputs(data.outputs);
       setPipelineMessage("✓ " + count + " clip(s) generados. Se guardaron en CLIPRD-Clips en tu computadora.");
       setEvents((current) => ["Render local completado · " + count + " clips", ...current].slice(0, 6));
       if (data.outputs?.[0]?.url) window.open(data.outputs[0].url, "_blank", "noopener,noreferrer");
@@ -168,6 +171,19 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     } finally {
       setUploading(false);
     }
+  }
+
+  async function runAutoClips() {
+    if (!sourceUrl.trim()) { setPipelineMessage("Pega una URL autorizada antes de iniciar la selección automática."); return; }
+    if (agentStatus !== "online") { setPipelineMessage("El motor local no está conectado."); return; }
+    setUploading(true); setPipelineMessage("Analizando audio y buscando zonas activas...");
+    try {
+      const seconds = duration === "long" ? 90 : duration === "short" ? 30 : 45;
+      const response = await fetch(agentOrigin + "/auto-clips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: sourceUrl.trim(), clipLength: seconds, maxClips: topN }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || "No se pudo completar el análisis automático");
+      const generated: Segment[] = (data.clips || []).map((x: any, i: number) => ({ id: Date.now()+i, start: stamp(Math.round(x.start)), end: stamp(Math.round(x.end)), seconds: Math.round(x.end-x.start), score: 90-i, title: "Momento detectado automáticamente", reason: "Zona activa de audio", tags: ["AUTO","AUDIO"] }));
+      setClips(generated); setSelected(generated.map(x=>x.id)); setOutputs(data.outputs || []); setPipelineMessage("✓ Selección automática terminada: " + generated.length + " clips reales generados.");
+    } catch (error) { setPipelineMessage(error instanceof Error ? error.message : "Error en la selección automática"); } finally { setUploading(false); }
   }
 
   function runAnalysis() {
@@ -244,7 +260,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
               <div className="mt-3 flex flex-wrap gap-2">
                 {([["viral", "🔥 Máximo potencial"], ["short", "📱 Shorts 20–60s"], ["long", "🎬 Clips 60–180s"]] as const).map(([v, label]) => <button key={v} onClick={() => setDuration(v)} className={`btn ${duration === v ? "btn-primary" : "btn-ghost"}`}>{label}</button>)}
               </div>
-              <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar y seleccionar mejores momentos"}</button>
+              <button onClick={runAnalysis} disabled={processing} className="btn btn-primary mt-4 w-full"><Sparkles className="size-4" />{processing ? "Analizando señales…" : "Analizar transcripción"}</button>
               <label className="field mt-4 block">
                 <span className="label">URL DE VIDEO AUTORIZADO</span>
                 <input className="input mt-2" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
@@ -255,7 +271,8 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
                   {agentStatus === "online" ? "● CONECTADO" : agentStatus === "checking" ? "● COMPROBANDO" : "● DESCONECTADO"}
                 </span>
               </div>
-              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length || !sourceUrl.trim() || uploading || agentStatus !== "online"} className="btn btn-primary mt-3 w-full">
+              <button onClick={runAutoClips} disabled={!sourceUrl.trim() || uploading || agentStatus !== "online"} className="btn btn-primary mt-3 w-full"><Sparkles className="size-4" /> {uploading ? "Analizando y generando..." : "Auto-generar mejores clips"}</button>
+              <button onClick={() => sendToPipeline(clips)} disabled={!selected.length || !sourceUrl.trim() || uploading || agentStatus !== "online"} className="btn btn-ghost mt-3 w-full">
                 <Scissors className="size-4" /> {uploading ? "Generando clips reales..." : "Generar clips en mi computadora"}
               </button>
               <p className="mt-2 text-xs text-muted">{pipelineMessage}</p>
@@ -289,6 +306,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
       )}
 
       <section className="mt-6">
+        {outputs.length > 0 && <div className="card mb-6 p-5"><div className="flex items-center justify-between gap-3"><div><p className="label">RENDERS RECIENTES</p><h2 className="mt-1 text-2xl font-black">Clips listos</h2></div><Link to="/" className="btn btn-ghost">Ver portada</Link></div><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{outputs.map((o) => <a key={o.url} href={o.url} target="_blank" rel="noreferrer" className="rounded-xl border border-border bg-surface-2 p-4 hover:border-neon/60"><Video className="size-6 text-neon" /><p className="mt-3 font-bold">Clip {o.index}</p><p className="mt-1 text-xs text-muted">Abrir / descargar</p></a>)}</div></div>}
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><p className="label">RANKING INTELIGENTE</p><h2 className="mt-1 text-2xl font-black">Momentos con mayor potencial</h2></div><div className="flex items-center gap-2 text-sm text-muted"><Clock3 className="size-4" /> Score actualizado</div></div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {clips.map((clip, i) => {
