@@ -2,31 +2,82 @@
 <html lang="es">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CLIPRD — Personal Studio</title>
+<title>CLIPRD — Una forma distinta de hacer clips</title>
 <style>
 :root{--bg:#070a10;--panel:#101722;--line:#253043;--text:#f5f7fb;--muted:#94a0b3;--accent:#8b5cf6;--accent2:#22d3ee;--ok:#34d399}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% -10%,#21154a,transparent 35%),#070a10;color:var(--text);font-family:Inter,system-ui,Arial,sans-serif}
-button,input{font:inherit}.app{max-width:1240px;margin:auto;padding:18px}.top{display:flex;justify-content:space-between;align-items:center;padding:14px 0 22px;border-bottom:1px solid var(--line)}
+button,input,select,textarea{font:inherit}.app{max-width:1240px;margin:auto;padding:18px}.top{display:flex;justify-content:space-between;align-items:center;padding:14px 0 22px;border-bottom:1px solid var(--line)}
 .logo{font-weight:1000;font-size:25px;letter-spacing:-1.5px}.logo span{color:#a78bfa}.status{font-size:13px;color:var(--muted)}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#64748b;margin-right:7px}.dot.on{background:var(--ok);box-shadow:0 0 15px var(--ok)}
 .nav{display:flex;gap:8px;margin:18px 0;flex-wrap:wrap}.nav button{background:#0d131d;color:var(--muted);border:1px solid var(--line);padding:10px 14px;border-radius:10px;cursor:pointer}.nav button.active{background:#201642;color:#fff;border-color:#7c3aed}
 .view{display:none}.view.active{display:block}.hero{min-height:430px;display:grid;grid-template-columns:1.2fr .8fr;gap:22px;align-items:center;padding:40px 0}.eyebrow{font-size:12px;letter-spacing:2px;font-weight:900;color:#a78bfa}.hero h1{font-size:clamp(54px,8vw,100px);line-height:.88;letter-spacing:-5px;margin:14px 0}.hero h1 b{color:#a78bfa}.lead{font-size:18px;line-height:1.65;color:var(--muted);max-width:720px}
 .card{background:linear-gradient(145deg,rgba(23,31,47,.95),rgba(10,14,23,.95));border:1px solid var(--line);border-radius:20px;padding:22px}.hero-card{min-height:300px;display:flex;flex-direction:column;justify-content:space-between}.metric{font-size:60px;font-weight:1000;letter-spacing:-4px}.row{display:flex;gap:12px;flex-wrap:wrap}.btn{border:0;border-radius:11px;padding:13px 18px;font-weight:850;cursor:pointer;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff}.btn.alt{background:#121b29;border:1px solid var(--line)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.clip{min-height:230px;padding:18px;display:flex;flex-direction:column;justify-content:end;background:linear-gradient(160deg,#202b44,#101722);border-radius:18px;border:1px solid var(--line)}.empty{grid-column:1/-1;text-align:center;padding:50px;color:var(--muted);border:1px dashed #39465a;border-radius:18px}
-h2{font-size:32px;margin:8px 0 18px}label{display:block;font-size:12px;font-weight:800;color:#aeb9c9;margin:16px 0 7px}input{width:100%;background:#090e16;border:1px solid #303b4e;color:#fff;padding:14px;border-radius:11px}.studio{display:grid;grid-template-columns:1fr .8fr;gap:18px}.notice{margin-top:14px;padding:14px;border-radius:12px;background:#0b1220;color:var(--muted);min-height:50px}.live-player{aspect-ratio:16/9;width:100%;border:0;border-radius:16px;background:#030508}.small{font-size:13px;color:var(--muted)}.library-title{display:flex;align-items:center;justify-content:space-between}
+h2{font-size:32px;margin:8px 0 18px}label{display:block;font-size:12px;font-weight:800;color:#aeb9c9;margin:16px 0 7px}input,select,textarea{width:100%;background:#090e16;border:1px solid #303b4e;color:#fff;padding:14px;border-radius:11px}textarea{min-height:110px;resize:vertical}select{cursor:pointer}.studio{display:grid;grid-template-columns:1fr .8fr;gap:18px}.notice{margin-top:14px;padding:14px;border-radius:12px;background:#0b1220;color:var(--muted);min-height:50px}.live-player{aspect-ratio:16/9;width:100%;border:0;border-radius:16px;background:#030508}.small{font-size:13px;color:var(--muted)}.library-title{display:flex;align-items:center;justify-content:space-between}
 @media(max-width:820px){.hero,.studio{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.hero h1{letter-spacing:-3px}.top{align-items:flex-start}}
 </style>
 </head>
 <body><main class="app">
-<header class="top"><div class="logo">CLIP<span>RD</span> <small class="small">PERSONAL STUDIO</small></div><div class="status"><i class="dot" id="dot"></i><span id="engineStatus">Comprobando motor local…</span></div></header>
-<nav class="nav"><button class="active" data-view="home">Inicio</button><button data-view="library">Biblioteca</button><button data-view="studio">Crear clips</button><button data-view="live">Live Monitor</button></nav>
+<header class="top"><div class="logo">CLIP<span>RD</span> <small class="small">UNA FORMA DISTINTA DE HACER CLIPS</small></div><div class="status"><i class="dot" id="dot"></i><span id="engineStatus">Comprobando motor local…</span></div></header>
+<nav class="nav"><button class="active" data-view="home">Inicio</button><button data-view="library">Biblioteca</button><button data-view="studio">Crear clips</button><button data-view="live">Monitor de Live</button><button data-view="publish">Publicar</button><button data-view="cover">Crear portada</button></nav>
 
-<section id="home" class="view active"><div class="hero"><div><div class="eyebrow">TU SISTEMA PERSONAL DE CLIPPING</div><h1>CREA.<br><b>CORTA.</b><br>PUBLICA.</h1><p class="lead">Una aplicación nueva, limpia y separada por funciones. Tus clips y resultados aparecen primero. El motor local procesa el contenido en tu computadora.</p><div class="row"><button class="btn" onclick="showView('studio')">🎬 Crear clips</button><button class="btn alt" onclick="showView('live')">📡 Abrir Live Monitor</button></div></div><div class="card hero-card"><div><div class="eyebrow">ESTADO DEL ESTUDIO</div><div class="metric" id="clipCount">0</div><div class="small">clips guardados en tu biblioteca</div></div><div class="card"><b>Motor local</b><p class="small" id="engineInfo">http://127.0.0.1:3847</p><button class="btn alt" onclick="checkEngine()">↻ Comprobar conexión</button></div></div></div></section>
+<section id="home" class="view active"><div class="hero"><div><div class="eyebrow">TU SISTEMA PERSONAL DE CLIPPING</div><h1>CREA.<br><b>CORTA.</b><br>PUBLICA.</h1><p class="lead">Una aplicación nueva, limpia y separada por funciones. Tus clips y resultados aparecen primero. El motor local procesa el contenido en tu computadora.</p><div class="row"><button class="btn" onclick="showView('studio')">🎬 Crear clips</button><button class="btn alt" onclick="showView('live')">📡 Abrir Monitor de Live</button></div></div><div class="card hero-card"><div><div class="eyebrow">ESTADO DEL ESTUDIO</div><div class="metric" id="clipCount">0</div><div class="small">clips guardados en tu biblioteca</div></div><div class="card"><b>Motor local</b><p class="small" id="engineInfo">http://127.0.0.1:3847</p><button class="btn alt" onclick="checkEngine()">↻ Comprobar conexión</button></div></div></div></section>
 
 <section id="library" class="view"><div class="library-title"><div><div class="eyebrow">MI BIBLIOTECA</div><h2>Clips generados</h2></div><button class="btn alt" onclick="clearLibrary()">Limpiar biblioteca</button></div><div class="grid" id="libraryGrid"></div></section>
 
 <section id="studio" class="view"><div class="eyebrow">CENTRO DE PRODUCCIÓN</div><h2>Generar clips automáticos</h2><div class="studio"><div class="card"><label>URL del contenido propio o autorizado</label><input id="sourceUrl" placeholder="https://www.youtube.com/watch?v=..."><div class="row"><div style="flex:1"><label>Duración por clip</label><input id="clipLength" type="number" value="45" min="10" max="180"></div><div style="flex:1"><label>Cantidad máxima</label><input id="maxClips" type="number" value="4" min="1" max="8"></div></div><button class="btn" style="margin-top:18px;width:100%" onclick="createClips()">✨ Generar clips reales</button><div class="notice" id="jobStatus">Listo. El procesamiento se ejecuta en tu motor local.</div></div><div class="card"><div class="eyebrow">CÓMO FUNCIONA</div><h3>Tu computadora procesa</h3><p class="small">La web solo controla el trabajo. El agente local usa yt-dlp y FFmpeg para contenido propio o autorizado y devuelve los MP4 a esta biblioteca.</p><button class="btn alt" onclick="checkEngine()">Comprobar motor</button></div></div></section>
 
 <section id="live" class="view"><div class="eyebrow">LIVE AUTO CLIP</div><h2>Monitor + cortes automáticos en tiempo real</h2><div class="studio"><div class="card"><label>URL de YouTube Live propio o autorizado</label><input id="liveUrl" placeholder="Pega la URL del Live"><div class="row"><div style="flex:1"><label>Duración del clip</label><input id="liveClipLength" type="number" value="45" min="10" max="180"></div><div style="flex:1"><label>Máximo por segmento</label><input id="liveMaxClips" type="number" value="2" min="1" max="4"></div></div><div class="row" style="margin-top:16px"><button class="btn" style="flex:1" onclick="startLiveAuto()">🟢 Iniciar Auto Clip</button><button class="btn alt" style="flex:1" onclick="stopLiveAuto()">■ Detener</button></div><p class="small">El motor local captura el Live por segmentos, analiza actividad de audio y exporta automáticamente los momentos detectados a tu biblioteca.</p><div class="notice" id="liveStatus">Pega una URL y pulsa Iniciar Auto Clip.</div><div class="notice" id="liveEvents" style="margin-top:10px">Esperando eventos del monitor…</div></div><div class="card"><iframe id="liveFrame" class="live-player" allow="autoplay;encrypted-media;picture-in-picture" allowfullscreen></iframe><div class="notice" style="margin-top:12px"><b id="liveState">STANDBY</b><span class="small" id="liveMeta"> · monitor detenido</span></div></div></div></section>
-</main>
+
+<section id="publish" class="view">
+  <div class="eyebrow">PUBLICACIÓN</div>
+  <h2>Prepara y publica tus clips</h2>
+  <div class="studio">
+    <div class="card">
+      <label>Selecciona un clip de tu biblioteca</label>
+      <select id="publishClip" onchange="updatePublishPreview()"></select>
+      <label>Título / texto de publicación</label>
+      <input id="publishTitle" placeholder="Ej.: El momento más viral del Live 🔥">
+      <label>Descripción</label>
+      <textarea id="publishDescription" placeholder="Escribe tu descripción y hashtags"></textarea>
+      <div class="notice" id="publishStatus">Selecciona un clip. CLIPRD prepara el archivo y te lleva al flujo oficial de cada plataforma.</div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">DESTINOS</div>
+      <h3>Facebook · YouTube · TikTok</h3>
+      <p class="small">Para publicar directamente dentro de una app se necesita autorizar las cuentas mediante las APIs oficiales de cada plataforma. Mientras tanto, estos botones abren el flujo oficial de carga con tu clip listo para descargar.</p>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" onclick="publishTo('youtube')">▶️ YouTube</button>
+        <button class="btn" onclick="publishTo('tiktok')">🎵 TikTok</button>
+        <button class="btn" onclick="publishTo('facebook')">📘 Facebook</button>
+      </div>
+      <div class="notice" id="publishPreview">Sin clip seleccionado.</div>
+    </div>
+  </div>
+</section>
+
+<section id="cover" class="view">
+  <div class="eyebrow">PORTADAS</div>
+  <h2>Crea una portada para cada corte</h2>
+  <div class="studio">
+    <div class="card">
+      <label>Clip para la portada</label>
+      <select id="coverClip" onchange="updateCoverClip()"></select>
+      <label>Imagen de fondo (opcional)</label>
+      <input id="coverImage" type="file" accept="image/*" onchange="loadCoverImage(event)">
+      <label>Texto principal</label>
+      <input id="coverText" value="EL MOMENTO MÁS VIRAL" oninput="drawCover()">
+      <label>Subtexto</label>
+      <input id="coverSubtext" value="CLIPRD" oninput="drawCover()">
+      <div class="row" style="margin-top:16px">
+        <button class="btn" onclick="downloadCover()">⬇️ Descargar portada JPG</button>
+        <button class="btn alt" onclick="drawCover()">↻ Actualizar</button>
+      </div>
+      <p class="small">Formato vertical 1080×1920, ideal para Shorts, Reels y TikTok.</p>
+    </div>
+    <div class="card">
+      <canvas id="coverCanvas" width="1080" height="1920" style="width:100%;border-radius:16px;background:#111"></canvas>
+    </div>
+  </div>
+</section></main>
 <script>
 const AGENT='http://127.0.0.1:3847';
 const $=id=>document.getElementById(id);
@@ -34,7 +85,8 @@ function showView(id){document.querySelectorAll('.view').forEach(v=>v.classList.
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>showView(b.dataset.view));
 function getLib(){try{return JSON.parse(localStorage.getItem('cliprd-library')||'[]')}catch{return[]}}
 function setLib(x){localStorage.setItem('cliprd-library',JSON.stringify(x));renderLibrary()}
-function renderLibrary(){const a=getLib(),g=$('libraryGrid');$('clipCount').textContent=a.length;g.innerHTML=a.length?a.map((x,i)=>'<article class="clip"><div class="eyebrow">CLIP '+(i+1)+'</div><h3>'+x.name+'</h3><p class="small">'+new Date(x.created).toLocaleString()+'</p><div class="row"><a class="btn" href="'+x.url+'" target="_blank">▶ Ver / descargar</a></div></article>').join(''):'<div class="empty">Tu biblioteca está vacía.<br><br>Genera clips desde el Centro de Producción.</div>'}
+function renderLibrary(){const a=getLib(),g=$('libraryGrid');$('clipCount').textContent=a.length;g.innerHTML=a.length?a.map((x,i)=>'<article class="clip"><div class="eyebrow">CLIP '+(i+1)+'</div><h3>'+escapeHtml(x.name)+'</h3><p class="small">'+new Date(x.created).toLocaleString()+'</p><div class="row"><a class="btn" href="'+x.url+'" target="_blank" rel="noopener">▶ Ver / descargar</a><button class="btn alt" onclick="selectClipForPublish('+i+')">🚀 Publicar</button><button class="btn alt" onclick="selectClipForCover('+i+')">🖼️ Portada</button></div></article>').join(''):'<div class="empty">Tu biblioteca está vacía.<br><br>Genera clips desde el Centro de Producción.</div>'}
+function escapeHtml(v){return String(v||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function clearLibrary(){if(confirm('¿Eliminar la biblioteca local de esta página?'))setLib([])}
 async function checkEngine(){const s=$('engineStatus'),d=$('dot');s.textContent='Comprobando motor…';try{const r=await fetch(AGENT+'/health',{cache:'no-store'});const x=await r.json();if(!r.ok||!x.ok)throw Error(x.error||'Motor no disponible');s.textContent='Motor local conectado';d.classList.add('on');$('engineInfo').textContent='ONLINE · yt-dlp y FFmpeg detectados'}catch(e){s.textContent='Motor local desconectado';d.classList.remove('on');$('engineInfo').textContent='Inicia cliprd-agent con npm start'}}
 async function createClips(){const url=$('sourceUrl').value.trim(),len=+$('clipLength').value,max=+$('maxClips').value,st=$('jobStatus');if(!/^https?:\/\//i.test(url)){st.textContent='❌ Introduce una URL válida.';return}st.textContent='⏳ Enviando trabajo al motor local…';try{const r=await fetch(AGENT+'/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});const x=await r.json();if(!r.ok)throw Error(x.error||'Error del motor');const old=getLib(),items=(x.outputs||[]).map((o,i)=>({name:'Clip '+(i+1)+' · '+o.start+'s–'+o.end+'s',url:o.url,created:Date.now()}));setLib([...items,...old]);st.textContent='✅ '+items.length+' clips generados y guardados en la biblioteca.';showView('library')}catch(e){st.textContent='❌ '+e.message}}
@@ -46,5 +98,36 @@ function addLiveOutputs(outputs){if(!Array.isArray(outputs)||!outputs.length)ret
 async function pollLive(){try{const r=await fetch(AGENT+'/live/status',{cache:'no-store'}),x=await r.json();$('liveState').textContent=x.active?'🔴 LIVE AUTO CLIPPING':'STANDBY';$('liveMeta').textContent=x.active?' · '+(x.processedSegments||0)+' segmentos analizados':' · monitor detenido';$('liveEvents').innerHTML=liveEventText(x.events);if(x.lastError)$('liveStatus').textContent='⚠️ '+x.lastError;addLiveOutputs(x.outputs)}catch(e){$('liveState').textContent='MOTOR NO DISPONIBLE'}}
 async function startLiveAuto(){const url=$('liveUrl').value.trim(),len=+$('liveClipLength').value,max=+$('liveMaxClips').value,st=$('liveStatus');if(!/^https?:\/\//i.test(url)){st.textContent='❌ Introduce una URL válida del Live.';return}openLive();st.textContent='⏳ Conectando al Live y preparando captura…';try{const r=await fetch(AGENT+'/live/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})}),x=await r.json();if(!r.ok)throw Error(x.error||'No se pudo iniciar el monitor');st.textContent='🟢 Auto Clip activo. Los primeros cortes aparecerán después de que se complete y analice el primer segmento.';if(liveTimer)clearInterval(liveTimer);liveTimer=setInterval(pollLive,8000);pollLive()}catch(e){st.textContent='❌ '+e.message}}
 async function stopLiveAuto(){try{await fetch(AGENT+'/live/stop',{method:'POST'});$('liveStatus').textContent='■ Monitor detenido. Tus clips ya generados siguen en la biblioteca.'}catch(e){$('liveStatus').textContent='⚠️ '+e.message}if(liveTimer){clearInterval(liveTimer);liveTimer=null}pollLive()}
+
+function clipOptions(){const a=getLib();const html=a.length?a.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.name||('Clip '+(i+1)))+'</option>').join(''):'<option value="">No hay clips todavía</option>';$('publishClip').innerHTML=html;$('coverClip').innerHTML=html}
+function selectClipForPublish(i){showView('publish');clipOptions();$('publishClip').value=String(i);updatePublishPreview()}
+function selectClipForCover(i){showView('cover');clipOptions();$('coverClip').value=String(i);updateCoverClip()}
+function updatePublishPreview(){const i=Number($('publishClip').value),x=getLib()[i];$('publishPreview').textContent=x?'🎬 Listo: '+x.name:'Sin clip seleccionado.'}
+function publishTo(platform){
+  const i=Number($('publishClip').value),x=getLib()[i];if(!x){$('publishStatus').textContent='❌ Primero genera o selecciona un clip.';return}
+  const title=$('publishTitle').value.trim()||x.name,desc=$('publishDescription').value.trim();
+  const destinations={youtube:'https://studio.youtube.com/',tiktok:'https://www.tiktok.com/upload',facebook:'https://www.facebook.com/'};
+  window.open(x.url,'_blank','noopener');
+  setTimeout(()=>window.open(destinations[platform],'_blank','noopener'),350);
+  $('publishStatus').textContent='📦 Se abrió tu clip y el portal oficial de '+platform+'. Descarga/sube el MP4 y pega el texto preparado. La publicación directa automática requiere conectar una cuenta autorizada mediante su API oficial.';
+  try{navigator.clipboard.writeText((title+'\n\n'+desc).trim())}catch{}
+}
+let coverImg=null;
+function loadCoverImage(e){const file=e.target.files&&e.target.files[0];if(!file)return;const img=new Image();img.onload=()=>{coverImg=img;drawCover()};img.src=URL.createObjectURL(file)}
+function updateCoverClip(){drawCover()}
+function drawCover(){
+ const canvas=$('coverCanvas'),ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+ ctx.clearRect(0,0,w,h);
+ if(coverImg){const r=Math.max(w/coverImg.width,h/coverImg.height),iw=coverImg.width*r,ih=coverImg.height*r;ctx.drawImage(coverImg,(w-iw)/2,(h-ih)/2,iw,ih)}else{const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,'#0f172a');g.addColorStop(.55,'#6d28d9');g.addColorStop(1,'#111827');ctx.fillStyle=g;ctx.fillRect(0,0,w,h)}
+ const overlay=ctx.createLinearGradient(0,0,0,h);overlay.addColorStop(0,'rgba(0,0,0,.05)');overlay.addColorStop(1,'rgba(0,0,0,.82)');ctx.fillStyle=overlay;ctx.fillRect(0,0,w,h);
+ ctx.fillStyle='#a78bfa';ctx.font='900 52px Arial';ctx.fillText('CLIPRD',70,100);
+ const text=($('coverText').value||'EL MOMENTO MÁS VIRAL').toUpperCase();ctx.fillStyle='#fff';ctx.font='900 112px Arial';ctx.textAlign='left';
+ const words=text.split(/\s+/);let lines=[],line='';for(const word of words){const test=(line?line+' ':'')+word;if(ctx.measureText(test).width>w-140&&line){lines.push(line);line=word}else line=test}if(line)lines.push(line);lines=lines.slice(0,4);let y=h-420;for(const l of lines){ctx.fillText(l,70,y);y+=128}
+ ctx.fillStyle='#22d3ee';ctx.font='700 42px Arial';ctx.fillText(($('coverSubtext').value||'CLIPRD').toUpperCase(),70,h-110);
+}
+function downloadCover(){drawCover();const a=document.createElement('a');a.download='cliprd-portada.jpg';a.href=$('coverCanvas').toDataURL('image/jpeg',.92);a.click()}
+const originalSetLib=setLib;
+setLib=function(x){localStorage.setItem('cliprd-library',JSON.stringify(x));renderLibrary();clipOptions()};
 renderLibrary();checkEngine();
+clipOptions();drawCover();
 </script></body></html>
