@@ -162,21 +162,22 @@ async function autoProcess(sourceUrl,clipLength,maxClips){const job=crypto.rando
 const live={active:false,sourceUrl:"",work:"",child:null,timer:null,processed:new Set(),outputs:[],events:[],clipLength:45,maxClips:2,startedAt:null,lastError:null};
 function liveEvent(message){live.events.unshift({time:Date.now(),message});live.events=live.events.slice(0,30)}
 async function getDirectStream(sourceUrl,work){
-  const selectors=["bv*+ba/best","bestvideo+bestaudio/best","best","worst"];
+  // LIVE: pedir video + audio y conservar ambas URLs cuando YouTube las entrega separadas.
+  const selectors=["bestvideo+bestaudio/best","bv*+ba/best","best"];
   let lastError=null;
   for(const selector of selectors){
     try{
       const r=await run("yt-dlp",ytArgs(["--no-playlist","-f",selector,"-g",sourceUrl]),work,60000);
-      const direct=(r.out||"").split(/\r?\n/).map(x=>x.trim()).find(Boolean);
-      if(direct)return direct;
-      lastError=new Error("yt-dlp no devolvió una URL de stream para este Live");
+      const streams=(r.out||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+      if(streams.length)return streams;
+      lastError=new Error("yt-dlp no devolvió URLs de video/audio para este Live");
     }catch(error){
       lastError=error;
       const m=error instanceof Error?error.message:String(error);
       if(!/Requested format is not available|format is not available/i.test(m))throw error;
     }
   }
-  throw lastError||new Error("yt-dlp no devolvió una URL de stream para este Live");
+  throw lastError||new Error("yt-dlp no devolvió URLs de video/audio para este Live");
 }
 async function scanLive(){
   if(!live.active||!live.work)return;
@@ -197,9 +198,19 @@ async function scanLive(){
 async function stopLive(){if(live.timer){clearInterval(live.timer);live.timer=null}if(live.child){live.child.kill("SIGTERM");live.child=null}const oldWork=live.work;live.active=false;live.work="";if(oldWork)await rm(oldWork,{recursive:true,force:true}).catch(()=>{});liveEvent("Monitor Live detenido")}
 async function startLive(sourceUrl,clipLength,maxClips){
   await stopLive();const work=path.join(os.tmpdir(),"cliprd-live",crypto.randomUUID());await mkdir(work,{recursive:true});
-  const direct=await getDirectStream(sourceUrl,work);
+  const streams=await getDirectStream(sourceUrl,work);
   const pattern=path.join(work,"segment-%06d.mp4");
-  const child=spawn("ffmpeg",["-hide_banner","-loglevel","warning","-i",direct,"-c","copy","-f","segment","-segment_time","60","-reset_timestamps","1",pattern],{cwd:work,windowsHide:true});
+  const inputs=streams.flatMap(stream=>["-i",stream]);
+  const ffmpegArgs=["-hide_banner","-loglevel","warning",...inputs];
+  if(streams.length>=2){
+    // URL 0 = video, URL 1 = audio: muxear ambos antes de segmentar.
+    ffmpegArgs.push("-map","0:v:0","-map","1:a:0?","-c:v","copy","-c:a","aac");
+  }else{
+    // Stream único ya multiplexado: conservar video y audio existentes.
+    ffmpegArgs.push("-map","0:v:0?","-map","0:a:0?","-c","copy");
+  }
+  ffmpegArgs.push("-f","segment","-segment_time","60","-reset_timestamps","1","-segment_format","mp4",pattern);
+  const child=spawn("ffmpeg",ffmpegArgs,{cwd:work,windowsHide:true});
   let stderr="";child.stderr.on("data",d=>{stderr+=d;if(stderr.length>4000)stderr=stderr.slice(-4000)});
   child.on("error",e=>{live.lastError=e.message;liveEvent("FFmpeg: "+e.message)});
   child.on("close",code=>{if(live.active&&code!==0){live.lastError=stderr||`FFmpeg terminó con código ${code}`;liveEvent("La captura del Live se detuvo")};live.child=null});
