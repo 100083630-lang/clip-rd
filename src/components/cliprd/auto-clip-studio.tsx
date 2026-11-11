@@ -112,7 +112,10 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
         const response = await fetch(agentOrigin + "/health");
         const raw = await response.text();
         const data = raw ? JSON.parse(raw) : null;
-        if (!response.ok || !data?.ok || data?.service !== "CLIPRD Local Agent") throw new Error("Agent offline");
+        // A running Local Agent only needs to confirm { ok: true }. Older/newer
+        // agent builds may omit the optional service label, so do not keep the UI
+        // stuck on "Comprobando motor..." because of a nonessential field.
+        if (!response.ok || !data?.ok) throw new Error("Agent offline");
         if (active) setAgentStatus("online");
       } catch {
         if (active) setAgentStatus("offline");
