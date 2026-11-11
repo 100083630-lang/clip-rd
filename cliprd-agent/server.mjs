@@ -77,9 +77,24 @@ function clipCopy(c,metadata){
 }
 async function downloadSource(sourceUrl,work){
   const template=path.join(work,"source.%(ext)s");
-  const args=ytArgs(["--no-playlist","--restrict-filenames","-f","bv*+ba/b/best","--merge-output-format","mp4","-o",template,sourceUrl]);
-  try{await run("yt-dlp",args,work,20*60*1000)}catch(error){const m=error instanceof Error?error.message:String(error);if(/DPAPI/i.test(m))throw new Error("Windows bloqueó las cookies del navegador (DPAPI). Usa un cookies.txt explícito si el contenido autorizado requiere autenticación.");throw error}
-  const files=await readdir(work);const name=files.find(f=>/\.(mp4|mkv|webm|mov)$/i.test(f));if(!name)throw new Error("yt-dlp terminó pero no produjo un video utilizable");return path.join(work,name);
+  const selectors=["bv*+ba/best","bestvideo+bestaudio/best","best","worst"];
+  let lastError=null;
+  for(const selector of selectors){
+    try{
+      const args=ytArgs(["--no-playlist","--restrict-filenames","-f",selector,"--merge-output-format","mp4","-o",template,sourceUrl]);
+      await run("yt-dlp",args,work,20*60*1000);
+      const files=await readdir(work);
+      const name=files.find(f=>/\.(mp4|mkv|webm|mov)$/i.test(f));
+      if(name)return path.join(work,name);
+      lastError=new Error("yt-dlp terminó pero no produjo un video utilizable");
+    }catch(error){
+      const m=error instanceof Error?error.message:String(error);
+      if(/DPAPI/i.test(m))throw new Error("Windows bloqueó las cookies del navegador (DPAPI). Usa un cookies.txt explícito si el contenido autorizado requiere autenticación.");
+      lastError=error;
+      if(!/Requested format is not available|format is not available/i.test(m))throw error;
+    }
+  }
+  throw lastError||new Error("No se pudo descargar el video con ningún formato disponible.");
 }
 async function mediaDuration(source,work){const r=await run("ffprobe",["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",source],work,30000);const n=Number(r.out.trim());if(!Number.isFinite(n)||n<=0)throw new Error("No se pudo leer la duración del video");return n}
 async function audioBasedSegments(source,work,clipLength,maxClips){
@@ -146,7 +161,23 @@ async function autoProcess(sourceUrl,clipLength,maxClips){const job=crypto.rando
 
 const live={active:false,sourceUrl:"",work:"",child:null,timer:null,processed:new Set(),outputs:[],events:[],clipLength:45,maxClips:2,startedAt:null,lastError:null};
 function liveEvent(message){live.events.unshift({time:Date.now(),message});live.events=live.events.slice(0,30)}
-async function getDirectStream(sourceUrl,work){const r=await run("yt-dlp",ytArgs(["--no-playlist","-f","best","-g",sourceUrl]),work,60000);const direct=(r.out||"").split(/\r?\n/).map(x=>x.trim()).find(Boolean);if(!direct)throw new Error("yt-dlp no devolvió una URL de stream para este Live");return direct}
+async function getDirectStream(sourceUrl,work){
+  const selectors=["bv*+ba/best","bestvideo+bestaudio/best","best","worst"];
+  let lastError=null;
+  for(const selector of selectors){
+    try{
+      const r=await run("yt-dlp",ytArgs(["--no-playlist","-f",selector,"-g",sourceUrl]),work,60000);
+      const direct=(r.out||"").split(/\r?\n/).map(x=>x.trim()).find(Boolean);
+      if(direct)return direct;
+      lastError=new Error("yt-dlp no devolvió una URL de stream para este Live");
+    }catch(error){
+      lastError=error;
+      const m=error instanceof Error?error.message:String(error);
+      if(!/Requested format is not available|format is not available/i.test(m))throw error;
+    }
+  }
+  throw lastError||new Error("yt-dlp no devolvió una URL de stream para este Live");
+}
 async function scanLive(){
   if(!live.active||!live.work)return;
   try{
