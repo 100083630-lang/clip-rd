@@ -109,13 +109,19 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     let active = true;
     const check = async () => {
       try {
-        const response = await fetch(agentOrigin + "/health");
+        const response = await fetch(agentOrigin + "/health", {
+          method: "GET",
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Agent offline");
         const raw = await response.text();
-        const data = raw ? JSON.parse(raw) : null;
-        // A running Local Agent only needs to confirm { ok: true }. Older/newer
-        // agent builds may omit the optional service label, so do not keep the UI
-        // stuck on "Comprobando motor..." because of a nonessential field.
-        if (!response.ok || !data?.ok) throw new Error("Agent offline");
+        let data: { ok?: boolean } | null = null;
+        try {
+          data = raw ? JSON.parse(raw) : null;
+        } catch {
+          throw new Error("Invalid agent response");
+        }
+        if (!data?.ok) throw new Error("Agent offline");
         if (active) setAgentStatus("online");
       } catch {
         if (active) setAgentStatus("offline");
@@ -184,7 +190,7 @@ export function AutoClipStudio({ profile }: { profile: Profile }) {
     setUploading(true); setPipelineMessage("Analizando audio y buscando zonas activas...");
     try {
       const seconds = duration === "long" ? 90 : duration === "short" ? 30 : 45;
-      const response = await fetch(agentOrigin + "/auto-clips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: sourceUrl.trim(), clipLength: seconds, maxClips: topN }) });
+      const response = await fetch(agentOrigin + "/auto-clips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: sourceUrl.trim(), clipLength: seconds, maxClips: topN }), });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || "No se pudo completar el análisis automático");
       const generated: Segment[] = (data.clips || []).map((x: any, i: number) => ({ id: Date.now()+i, start: stamp(Math.round(x.start)), end: stamp(Math.round(x.end)), seconds: Math.round(x.end-x.start), score: 90-i, title: "Momento detectado automáticamente", reason: "Zona activa de audio", tags: ["AUTO","AUDIO"] }));
       setClips(generated); setSelected(generated.map(x=>x.id)); setOutputs(data.outputs || []); if (Array.isArray(data.outputs)) addClipLibrary(data.outputs); setPipelineMessage("✓ Selección automática terminada: " + generated.length + " clips reales generados.");
