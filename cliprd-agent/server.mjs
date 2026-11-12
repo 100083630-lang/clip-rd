@@ -160,8 +160,14 @@ async function renderSource(source,clips,work,metadata={}){
 async function processJob(sourceUrl,clips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const metadata=await getVideoMetadata(sourceUrl,work);return await renderSource(source,clips,work,metadata)}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
 async function autoProcess(sourceUrl,clipLength,maxClips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const metadata=await getVideoMetadata(sourceUrl,work);const clips=await audioBasedSegments(source,work,clipLength,maxClips);const result=await renderSource(source,clips,work,metadata);return{...result,clips,analysis:"audio-activity"}}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
 
-const live={active:false,sourceUrl:"",work:"",child:null,timer:null,processed:new Set(),outputs:[],events:[],clipLength:45,maxClips:2,startedAt:null,lastError:null};
+const live={
+  active:false,stopping:false,sourceUrl:"",work:"",child:null,timer:null,
+  processed:new Set(),outputs:[],events:[],clipLength:45,maxClips:1,
+  startedAt:null,lastError:null,scanPromise:null,stopPromise:null
+};
 function liveEvent(message){live.events.unshift({time:Date.now(),message});live.events=live.events.slice(0,30)}
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
 async function getDirectStream(sourceUrl,work){
   // LIVE: pedir video + audio y conservar ambas URLs cuando YouTube las entrega separadas.
   const selectors=["bestvideo+bestaudio/best","bv*+ba/best","best"];
@@ -180,50 +186,172 @@ async function getDirectStream(sourceUrl,work){
   }
   throw lastError||new Error("yt-dlp no devolvió URLs de video/audio para este Live");
 }
-async function scanLive(){
-  if(!live.active||!live.work)return;
-  try{
-    const files=(await readdir(live.work)).filter(f=>/^segment-\d+\.mp4$/i.test(f)).sort();
-    for(const name of files.slice(0,-1)){
-      if(live.processed.has(name))continue;live.processed.add(name);
-      const source=path.join(live.work,name);const info=await stat(source);if(info.size<50000)continue;
-      const clips=await audioBasedSegments(source,live.work,live.clipLength,live.maxClips);
-      if(!clips.length){liveEvent("Segmento analizado sin momento exportable");continue}
-      const result=await renderSource(source,clips,live.work);
-      const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;
-      const outs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t),live:true,created:Date.now()}));
-      live.outputs.unshift(...outs);live.outputs=live.outputs.slice(0,80);liveEvent(`✨ ${outs.length} clip(s) detectados automáticamente en el Live`);
-    }
-  }catch(error){live.lastError=error instanceof Error?error.message:String(error);liveEvent("Error de análisis: "+live.lastError)}
+
+async function waitForFileToSettle(file){
+  let previous=-1,stable=0;
+  for(let i=0;i<10;i++){
+    try{
+      const info=await stat(file);
+      if(info.size>0&&info.size===previous){stable++;if(stable>=2)return true}
+      else stable=0;
+      previous=info.size;
+    }catch{}
+    await sleep(350);
+  }
+  return previous>0;
 }
-async function stopLive(){if(live.timer){clearInterval(live.timer);live.timer=null}if(live.child){live.child.kill("SIGTERM");live.child=null}const oldWork=live.work;live.active=false;live.work="";if(oldWork)await rm(oldWork,{recursive:true,force:true}).catch(()=>{});liveEvent("Monitor Live detenido")}
+
+async function processLiveSegment(name){
+  if(live.processed.has(name)||!live.work)return;
+  const source=path.join(live.work,name);
+  const ready=await waitForFileToSettle(source);
+  if(!ready)return;
+  const info=await stat(source).catch(()=>null);
+  if(!info||info.size<50000)return;
+  live.processed.add(name);
+
+  // Cada segmento es un corte automático de ~45 segundos. No se requiere marcar nada.
+  const duration=await mediaDuration(source,live.work).catch(()=>live.clipLength);
+  const end=Math.max(1,Math.min(duration,live.clipLength));
+  const result=await renderSource(source,[{start:0,end}],live.work);
+  const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;
+  const outs=result.outputs.map(x=>({
+    ...x,
+    url:origin+x.file,
+    coverUrl:origin+x.cover,
+    thumbnails:(x.thumbnails||[]).map(t=>origin+t),
+    live:true,
+    created:Date.now()
+  }));
+  live.outputs.unshift(...outs);
+  live.outputs=live.outputs.slice(0,120);
+  liveEvent(`✨ Clip automático de ${Math.round(end)} segundos enviado a Biblioteca`);
+}
+
+async function scanLive(includeCurrent=false){
+  if(!live.work)return;
+  if(live.scanPromise)return live.scanPromise;
+  live.scanPromise=(async()=>{
+    try{
+      const files=(await readdir(live.work))
+        .filter(f=>/^segment-\d+\.mp4$/i.test(f)).sort();
+      const readyFiles=includeCurrent?files:files.slice(0,-1);
+      for(const name of readyFiles)await processLiveSegment(name);
+    }catch(error){
+      live.lastError=error instanceof Error?error.message:String(error);
+      liveEvent("Error de análisis: "+live.lastError);
+    }finally{
+      live.scanPromise=null;
+    }
+  })();
+  return live.scanPromise;
+}
+
+async function killWindowsProcessTree(child){
+  if(!child?.pid)return;
+  if(process.platform==="win32"){
+    await new Promise(resolve=>{
+      const killer=spawn("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true});
+      killer.on("close",resolve);
+      killer.on("error",resolve);
+    });
+  }else{
+    try{child.kill("SIGTERM")}catch{}
+  }
+}
+
+async function stopLive(){
+  if(live.stopPromise)return live.stopPromise;
+  live.stopPromise=(async()=>{
+    live.stopping=true;
+    if(live.timer){clearInterval(live.timer);live.timer=null}
+    liveEvent("⏳ Deteniendo captura del Live…");
+
+    const child=live.child;
+    if(child){
+      await killWindowsProcessTree(child);
+      await Promise.race([
+        new Promise(resolve=>child.once("close",resolve)),
+        sleep(5000)
+      ]);
+      live.child=null;
+    }
+
+    // FFmpeg ya cerró el MP4: procesar también el último segmento antes de soltar la carpeta temporal.
+    await sleep(800);
+    await scanLive(true);
+
+    const oldWork=live.work;
+    live.active=false;
+    live.stopping=false;
+    live.work="";
+    if(oldWork)await rm(oldWork,{recursive:true,force:true}).catch(()=>{});
+    liveEvent("■ Monitor Live detenido. Último corte procesado.");
+  })().finally(()=>{live.stopPromise=null});
+  return live.stopPromise;
+}
+
 async function startLive(sourceUrl,clipLength,maxClips){
-  await stopLive();const work=path.join(os.tmpdir(),"cliprd-live",crypto.randomUUID());await mkdir(work,{recursive:true});
+  await stopLive();
+  const work=path.join(os.tmpdir(),"cliprd-live",crypto.randomUUID());
+  await mkdir(work,{recursive:true});
   const streams=await getDirectStream(sourceUrl,work);
   const pattern=path.join(work,"segment-%06d.mp4");
   const inputs=streams.flatMap(stream=>["-i",stream]);
   const ffmpegArgs=["-hide_banner","-loglevel","warning",...inputs];
+
   if(streams.length>=2){
-    // URL 0 = video, URL 1 = audio: muxear ambos antes de segmentar.
     ffmpegArgs.push("-map","0:v:0","-map","1:a:0?","-c:v","copy","-c:a","aac");
   }else{
-    // Stream único ya multiplexado: conservar video y audio existentes.
     ffmpegArgs.push("-map","0:v:0?","-map","0:a:0?","-c","copy");
   }
-  ffmpegArgs.push("-f","segment","-segment_time","60","-reset_timestamps","1","-segment_format","mp4",pattern);
+
+  // Segmentos de 45 s: cada segmento terminado se convierte automáticamente en un clip.
+  ffmpegArgs.push(
+    "-f","segment",
+    "-segment_time",String(45),
+    "-reset_timestamps","1",
+    "-segment_format","mp4",
+    pattern
+  );
+
   const child=spawn("ffmpeg",ffmpegArgs,{cwd:work,windowsHide:true});
-  let stderr="";child.stderr.on("data",d=>{stderr+=d;if(stderr.length>4000)stderr=stderr.slice(-4000)});
+  let stderr="";
+  child.stderr.on("data",d=>{stderr+=d;if(stderr.length>4000)stderr=stderr.slice(-4000)});
   child.on("error",e=>{live.lastError=e.message;liveEvent("FFmpeg: "+e.message)});
-  child.on("close",code=>{if(live.active&&code!==0){live.lastError=stderr||`FFmpeg terminó con código ${code}`;liveEvent("La captura del Live se detuvo")};live.child=null});
-  live.active=true;live.sourceUrl=sourceUrl;live.work=work;live.child=child;live.clipLength=clipLength;live.maxClips=maxClips;live.startedAt=Date.now();live.lastError=null;live.processed=new Set();live.outputs=[];live.events=[];liveEvent("🟢 Live conectado. Capturando segmentos de 60 segundos…");live.timer=setInterval(scanLive,12000);setTimeout(scanLive,15000);
+  child.on("close",code=>{
+    if(live.active&&!live.stopping&&code!==0){
+      live.lastError=stderr||`FFmpeg terminó con código ${code}`;
+      liveEvent("La captura del Live se detuvo");
+    }
+    live.child=null;
+  });
+
+  live.active=true;
+  live.stopping=false;
+  live.sourceUrl=sourceUrl;
+  live.work=work;
+  live.child=child;
+  live.clipLength=45;
+  live.maxClips=1;
+  live.startedAt=Date.now();
+  live.lastError=null;
+  live.processed=new Set();
+  live.outputs=[];
+  live.events=[];
+  liveEvent("🟢 Live conectado. Cortes automáticos cada 45 segundos…");
+
+  live.timer=setInterval(()=>scanLive(false),5000);
+  setTimeout(()=>scanLive(false),6000);
   return {active:true};
 }
-function liveStatus(){return{active:live.active,sourceUrl:live.sourceUrl,startedAt:live.startedAt,outputs:live.outputs,events:live.events,lastError:live.lastError,processedSegments:live.processed.size}}
+
+function liveStatus(){return{active:live.active,stopping:live.stopping,sourceUrl:live.sourceUrl,startedAt:live.startedAt,outputs:live.outputs,events:live.events,lastError:live.lastError,processedSegments:live.processed.size,clipLength:45}}
 
 const server=http.createServer(async(req,res)=>{try{
   if(req.method==="OPTIONS"){res.writeHead(204,cors());return res.end()}
   const url=new URL(req.url,`http://${req.headers.host}`);
-  if(req.method==="GET"&&url.pathname==="/health"){return json(res,200,{ok:true,service:"CLIPRD Local Agent",version:"2.2.1",outputDir:OUT,features:{autoClips:"audio-activity",liveMonitor:"rolling-segments"}})}
+  if(req.method==="GET"&&url.pathname==="/health"){return json(res,200,{ok:true,service:"CLIPRD Local Agent",version:"2.2.1",outputDir:OUT,features:{autoClips:"audio-activity",liveMonitor:"automatic-45-second-clips"}})}
   if(req.method==="POST"&&url.pathname==="/render"){const b=await body(req);const result=await processJob(safeUrl(b.sourceUrl),safeClips(b.clips));const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t)}));return json(res,200,result)}
   if(req.method==="POST"&&url.pathname==="/auto-clips"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(8,Number(b.maxClips)||4));const result=await autoProcess(safeUrl(b.sourceUrl),len,max);const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t)}));return json(res,200,result)}
   if(req.method==="POST"&&url.pathname==="/live/start"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(4,Number(b.maxClips)||2));await startLive(safeUrl(b.sourceUrl),len,max);return json(res,200,liveStatus())}
