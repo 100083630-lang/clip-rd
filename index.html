@@ -37,150 +37,341 @@ button,input,select,textarea{font:inherit}.app{max-width:1600px;margin:auto;padd
 <button class="navbtn" data-view="library">▣ Biblioteca</button>
 <button class="navbtn" data-view="studio">✦ Auto Clip</button>
 <button class="navbtn" data-view="live">◉ Live Radar</button>
-<div class="navlabel">CREADOR</div>
+<div class="navlabel">CREACIÓN</div>
 <button class="navbtn" data-view="ideas">💡 Banco de Ideas</button>
-<button class="navbtn" data-view="calendar">▦ Calendario</button>
-<button class="navbtn" data-view="publish">➤ Publicar</button>
-<button class="navbtn" data-view="cover">✧ Portada Studio</button>
-<div class="sidebar-footer"><b>⚡ CREATOR MODE</b><div class="small">Genera · organiza · previsualiza · publica</div></div>
+<button class="navbtn" data-view="calendar">📅 Calendario</button>
+<button class="navbtn" data-view="publish">🚀 Publicar</button>
+<div class="navlabel">CUENTA</div>
+<button class="navbtn" data-view="settings">⚙ Ajustes</button>
+<div class="sidebar-footer"><div class="small">Motor local</div><div id="engineStatus" class="small">Conectando...</div></div>
 </aside>
+<main class="main">
+<div class="top">
+<input class="search" id="search" placeholder="Buscar clips, ideas, carpetas..." oninput="renderLibrary()">
+<div class="engine"><span class="dot" id="engineDot"></span><span id="engineText">Motor</span></div>
+</div>
+
+<!-- HOME -->
+<div class="view active" data-view="home">
+<div class="hero">
+<div class="hero-copy">
+<div class="eyebrow">CLIPRD STUDIO</div>
+<h1>Tu sistema<br><b>operativo</b><br>de clips</h1>
+<p class="lead">Biblioteca, Auto Clip, Live Radar, ideas, calendario y publicación. Todo en un solo lugar.</p>
+<div class="row">
+<button class="btn" onclick="showView('studio')">Auto Clip →</button>
+<button class="btn alt" onclick="showView('library')">Ver Biblioteca</button>
+</div>
+</div>
+<div class="hero-panel">
+<div class="statgrid">
+<div class="stat"><div class="small">Clips</div><b id="statClips">0</b></div>
+<div class="stat"><div class="small">Ideas</div><b id="statIdeas">0</b></div>
+<div class="stat"><div class="small">Publicados</div><b id="statPublished">0</b></div>
+<div class="stat"><div class="small">Score medio</div><b id="statScore">0</b></div>
+</div>
+<div class="quick">
+<button onclick="showView('studio')">✦ Generar clips</button>
+<button onclick="showView('live')">◉ Live Radar</button>
+<button onclick="showView('ideas')">💡 Ideas</button>
+<button onclick="showView('calendar')">📅 Calendario</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- LIBRARY -->
+<div class="view" data-view="library">
+<div class="toolbar">
+<input id="folderFilter" placeholder="Filtrar carpeta" oninput="renderLibrary()">
+<select id="sortClips" onchange="renderLibrary()"><option value="new">Más nuevos</option><option value="score">Mejor score</option><option value="title">Título</option></select>
+</div>
+<div class="folders" id="folders"></div>
+<div class="grid" id="libraryGrid"></div>
+</div>
+
+<!-- STUDIO / AUTO CLIP -->
+<div class="view" data-view="studio">
+<div class="studio">
+<div class="card">
+<h2>Auto Clip</h2>
+<label>URL del video</label>
+<input id="sourceUrl" placeholder="https://youtube.com/watch?v=... o ruta local">
+<label>Duración de cada clip (seg)</label>
+<input id="clipLength" type="number" value="45">
+<label>Máximo de clips</label>
+<input id="maxClips" type="number" value="3">
+<button class="btn" style="margin-top:16px" onclick="generateAutoClips()">Generar clips</button>
+<div class="notice" id="studioNotice">Listo para generar.</div>
+</div>
+<div class="card">
+<h3>Resultado</h3>
+<div id="studioResult" class="small">Los clips aparecerán aquí y se guardarán en la Biblioteca.</div>
+</div>
+</div>
+</div>
+
+<!-- LIVE -->
+<div class="view" data-view="live">
+<div class="live-radar-view">
+<div class="live-radar-hero">
 <div>
-<header class="top"><input id="globalSearch" class="search" placeholder="Buscar clips, títulos, ideas o descripciones…" oninput="filterLibrary()"><div class="engine"><i class="dot" id="dot"></i><span id="engineStatus">Comprobando motor…</span></div></header>
+<div class="live-eyebrow">LIVE RADAR</div>
+<h2>Captura<br>momentos</h2>
+<p class="live-lead">Marca momentos en vivo y genera clips al detener.</p>
+</div>
+<div class="live-signal"><span></span> EN VIVO</div>
+</div>
+<div class="live-premium-grid">
+<div class="live-control-card card">
+<div class="live-card-title"><div><div class="live-icon">◉</div><div><b>Control</b><small>Motor local</small></div></div><div class="live-secure">SECURE</div></div>
+<label>URL de la transmisión</label>
+<input id="liveUrl" placeholder="URL del live">
+<div class="live-actions">
+<button class="btn live-start" onclick="startLive()">Iniciar</button>
+<button class="btn live-mark" onclick="markMoment()">Marcar</button>
+<button class="btn live-stop" onclick="stopLive()">Detener</button>
+</div>
+<div class="live-status-card notice" id="liveStatus">Inactivo</div>
+<div class="live-marks" id="liveMarks"></div>
+</div>
+<div class="live-preview-card card">
+<div class="live-preview-head"><div><div class="live-red-dot"></div><div><b>PREVIEW</b><small>Live</small></div></div><div class="live-quality">1080p</div></div>
+<div class="live-screen"><iframe class="liveframe" id="liveFrame" src="about:blank"></iframe><div class="live-scan"></div></div>
+<div class="live-preview-footer"><div class="live-state-pill"><span></span> Listo</div></div>
+</div>
+</div>
+</div>
+</div>
 
-<section id="home" class="view active">
-<div class="hero"><div class="hero-copy"><div class="eyebrow">CLIPRD CREATOR STUDIO</div><h1>CREA.<br><b>DESTACA.</b><br>PUBLICA.</h1><p class="lead">Tu espacio de trabajo para convertir contenido en clips. Organiza cada corte desde el inicio del video, míralo antes de descargarlo, prepara la descripción y deja todo listo para publicar.</p><div class="row"><button class="btn" onclick="showView('studio')">🎬 Crear clips</button><button class="btn alt" onclick="showView('library')">▣ Ver mi contenido</button></div></div>
-<div class="hero-panel"><div class="card"><div class="eyebrow">TU ESTUDIO</div><div class="statgrid"><div class="stat"><b id="clipCount">0</b><span class="small">clips guardados</span></div><div class="stat"><b id="folderCount">0</b><span class="small">carpetas</span></div><div class="stat"><b id="todayCount">0</b><span class="small">clips de hoy</span></div><div class="stat"><b id="weekCount">0</b><span class="small">esta semana</span></div><div class="stat wide"><b id="lastClip">—</b><span class="small">último clip generado</span></div></div></div><div class="quick"><button onclick="showView('studio')">✨<br>Nuevo Auto Clip</button><button onclick="showView('live')">🔴<br>Live Radar</button><button onclick="showView('cover')">🖼️<br>Crear portada</button><button onclick="showView('publish')">🚀<br>Preparar publicación</button></div><div class="card"><b>Motor local</b><div class="small" id="engineInfo">http://127.0.0.1:3847</div><button class="btn alt" style="margin-top:10px" onclick="checkEngine()">↻ Revisar conexión</button></div></div></div>
-</section>
-<section class="section-grid" style="margin:0 0 22px">
-<div class="card"><div class="eyebrow">ANALÍTICAS DEL CREADOR</div><h3>Clips por día · esta semana</h3><div class="bars" id="weeklyBars"></div><div class="small" id="weekCompare"></div></div>
-<div class="card"><div class="eyebrow">TOP 3</div><h3>Mayor potencial viral</h3><div class="topclips" id="topClips"></div></div>
-</section>
-<section class="section-grid" style="margin-bottom:24px"><div class="card"><div class="eyebrow">TENDENCIAS RD HOY</div><div class="row"><input id="trendTopic" placeholder="Tema o nicho en RD…"><button class="btn" onclick="generateTrends()">Generar 5</button></div><div class="trend-list" id="trendList" style="margin-top:12px"></div></div><div class="card"><div class="eyebrow">ATAJOS</div><div class="quick"><button onclick="showView('ideas')">💡<br>20 Ideas</button><button onclick="showView('calendar')">📅<br>Plan semanal</button><button onclick="showView('live')">🔴<br>Live inteligente</button><button onclick="showView('publish')">🚀<br>Publicar</button></div></div></section>
+<!-- IDEAS -->
+<div class="view" data-view="ideas">
+<div class="card">
+<h2>Banco de Ideas</h2>
+<label>Tema</label>
+<input id="ideaTopic" placeholder="Tema para ideas">
+<button class="btn" onclick="generateIdeas()">Generar ideas</button>
+<div id="ideasList" class="idea-list" style="margin-top:16px"></div>
+</div>
+</div>
 
-<section id="library" class="view">
-<div class="eyebrow">BIBLIOTECA DE CONTENIDO</div><h2>Tu contenido, organizado para crear más.</h2>
-<div class="toolbar"><input id="librarySearch" placeholder="Buscar en biblioteca…" oninput="filterLibrary()"><select id="sortMode" onchange="renderLibrary()"><option value="start-asc">Orden: inicio del clip ↑</option><option value="start-desc">Orden: inicio del clip ↓</option><option value="newest">Más recientes</option><option value="oldest">Más antiguos</option><option value="viral">Mayor Score Viral</option></select><span class="small" id="libraryStats"></span><button class="btn alt" onclick="clearLibrary()">Limpiar</button></div>
-<div class="folders" id="folderBar"></div><div class="grid" id="libraryGrid"></div>
-</section>
+<!-- CALENDAR -->
+<div class="view" data-view="calendar">
+<div class="card">
+<h2>Calendario</h2>
+<div class="calendar" id="calendar"></div>
+</div>
+</div>
 
-<section id="studio" class="view"><div class="eyebrow">AUTO CLIP ENGINE</div><h2>Convierte una fuente en contenido.</h2><div class="studio"><div class="card"><label>URL del contenido propio o autorizado</label><input id="sourceUrl" placeholder="https://www.youtube.com/watch?v=..."><div class="row"><div style="flex:1"><label>Duración por clip</label><input id="clipLength" type="number" value="45" min="10" max="180"></div><div style="flex:1"><label>Cantidad máxima</label><input id="maxClips" type="number" value="4" min="1" max="12"></div></div><label>Nombre de la carpeta de producción</label><input id="jobFolder" placeholder="Ej.: Podcast noviembre"><button class="btn" style="margin-top:18px;width:100%" onclick="createClips()">✨ Generar clips</button><div class="notice" id="jobStatus">El procesamiento se ejecuta en tu motor local.</div></div><div class="card"><div class="eyebrow">CREATOR FLOW</div><h3>De video a publicación</h3><p class="small">Los nuevos clips se guardan en su carpeta, conservan su posición de inicio para ordenarlos correctamente y llegan a la Biblioteca con preview, descripción, transcripción y recursos visuales cuando el motor los devuelve.</p><div class="notice">💡 Consejo: usa una carpeta por Live, podcast o proyecto para trabajar como un verdadero estudio de contenido.</div></div></div></section>
+<!-- PUBLISH -->
+<div class="view" data-view="publish">
+<div class="card">
+<h2>Publicar</h2>
+<p class="small">Selecciona un clip de la Biblioteca para publicar.</p>
+<div id="publishArea"></div>
+</div>
+</div>
 
-<section id="live" class="view live-radar-view">
-  <div class="live-radar-hero">
-    <div>
-      <div class="eyebrow live-eyebrow">◉ LIVE RADAR · CLIPRD INTELLIGENCE</div>
-      <h2>Tu radar creativo en directo</h2>
-      <p class="live-lead">Detecta momentos, marca picos y convierte tu LIVE en contenido listo para crear.</p>
-    </div>
-    <div class="live-signal"><span></span> SISTEMA EN TIEMPO REAL</div>
-  </div>
-  <div class="live-premium-grid">
-    <div class="card live-control-card">
-      <div class="live-card-title"><div><span class="live-icon">⌁</span><div><b>Centro de control</b><small>Configura tu monitor inteligente</small></div></div><span class="live-secure">LOCAL</span></div>
-      <label>URL de YouTube Live propio o autorizado</label>
-      <input id="liveUrl" placeholder="Pega la URL del Live">
-      <div class="row live-settings">
-        <div style="flex:1"><label>Duración del clip</label><input id="liveClipLength" type="number" value="45" min="10" max="180"></div>
-        <div style="flex:1"><label>Máximo por segmento</label><input id="liveMaxClips" type="number" value="2" min="1" max="4"></div>
-      </div>
-      <div class="live-actions">
-        <button class="btn good live-start" onclick="startLiveAuto()">◉ Iniciar radar</button>
-        <button class="btn alt live-mark" onclick="markLiveMoment()">⚡ Marcar momento</button>
-        <button class="btn alt live-stop" onclick="stopLiveAuto()">■ Detener</button>
-      </div>
-      <div class="notice live-status-card" id="liveStatus">Pega una URL y activa el radar.</div>
-      <div class="notice live-events-card" id="liveEvents">Esperando eventos del monitor…</div>
-      <div class="live-marks" id="liveMarks"></div>
-    </div>
-    <div class="card live-preview-card">
-      <div class="live-preview-head"><div><span class="live-red-dot"></span><b>EN VIVO</b><small>Vista previa del LIVE</small></div><span class="live-quality">HD</span></div>
-      <div class="live-screen"><iframe id="liveFrame" class="liveframe" allow="autoplay;encrypted-media;picture-in-picture" allowfullscreen></iframe><div class="live-scan"></div></div>
-      <div class="live-preview-footer"><div class="live-state-pill"><span></span><b id="liveState">STANDBY</b></div><span class="small" id="liveMeta">monitor detenido</span></div>
-    </div>
-  </div>
-</section>
+<!-- SETTINGS -->
+<div class="view" data-view="settings">
+<div class="card">
+<h2>Ajustes</h2>
+<label>YouTube API Key</label>
+<input id="ytKey" placeholder="Opcional">
+<button class="btn" onclick="saveSettings()">Guardar</button>
+</div>
+</div>
 
-<section id="publish" class="view"><div class="eyebrow">PUBLICACIÓN</div><h2>Un clip. Varias plataformas.</h2><div class="studio"><div class="card"><label>Selecciona un clip</label><select id="publishClip" onchange="updatePublishPreview()"></select><div class="platform-tabs"><button class="active" data-platform="youtube" onclick="setPlatform('youtube')">▶ YouTube Shorts</button><button data-platform="tiktok" onclick="setPlatform('tiktok')">🎵 TikTok</button><button data-platform="instagram" onclick="setPlatform('instagram')">◎ Instagram Reels</button></div><label>Título / gancho</label><input id="publishTitle"><label>Texto adaptado</label><textarea id="publishDescription"></textarea><div class="row"><button class="btn alt" onclick="copyPublishAll()">📋 Copiar todo</button><button class="btn good" onclick="publishTo(currentPlatform)">⬇ Descargar Clip + Copiar texto</button></div><div class="notice" id="publishStatus">Selecciona un clip para preparar la publicación.</div></div><div class="card"><div class="eyebrow">PUBLICACIÓN EN 1 CLICK</div><h3 id="platformTitle">YouTube Shorts</h3><p class="small">CLIPRD adapta el texto para cada plataforma, descarga el clip y abre su sitio oficial.</p><div class="notice" id="publishPreview">Sin clip seleccionado.</div></div></div></section>
+</main>
+</div></main></div>
 
-<section id="ideas" class="view"><div class="eyebrow">BANCO DE IDEAS</div><h2>Nunca más te quedes sin contenido.</h2><div class="section-grid"><div class="card"><label>¿De qué es tu contenido?</label><input id="ideaTopic" placeholder="Ej.: podcast de emprendimiento en RD"><button class="btn" style="margin-top:14px" onclick="generateIdeas()">✨ Generar 20 ideas</button><div class="idea-list" id="ideaList" style="margin-top:16px"></div></div><div class="card"><div class="eyebrow">IDEAS GUARDADAS</div><div class="idea-list" id="savedIdeas"></div></div></div></section>
-<section id="calendar" class="view"><div class="eyebrow">CALENDARIO + COLA</div><h2>Planifica tu semana de publicación.</h2><div class="card"><div class="calendar" id="weeklyCalendar"></div></div><div class="section-grid" style="margin-top:18px"><div class="card"><div class="eyebrow">ASIGNAR CLIP</div><select id="calendarClip"></select><div class="row"><select id="calendarDay"><option>Lunes</option><option>Martes</option><option>Miércoles</option><option>Jueves</option><option>Viernes</option><option>Sábado</option><option>Domingo</option></select><input id="calendarTime" type="time" value="19:00"><select id="calendarPlatform"><option>TikTok</option><option>YouTube Shorts</option><option>Instagram Reels</option></select><button class="btn" onclick="scheduleClip()">Programar</button></div></div><div class="card"><div class="eyebrow">COLA DE PUBLICACIÓN</div><div class="queue-list" id="publishQueue"></div></div></div></section>
-<section id="cover" class="view"><div class="eyebrow">COVER STUDIO</div><h2>Haz que el clip invite a darle play.</h2><div class="studio"><div class="card"><label>Clip</label><select id="coverClip" onchange="updateCoverClip()"></select><label>Fotogramas del corte</label><div id="coverCandidates" class="thumbs"></div><label>Portadas A/B</label><div id="abCovers" class="ab-covers"></div><label>Texto principal</label><input id="coverText" value="EL MOMENTO MÁS VIRAL" oninput="drawCover()"><label>Subtexto</label><input id="coverSubtext" value="CLIPRD" oninput="drawCover()"><div class="colorrow"><div><label>Color principal</label><input id="coverTextColor" type="color" value="#ffffff" oninput="drawCover()"></div><div><label>Color de acento</label><input id="coverAccentColor" type="color" value="#22d3ee" oninput="drawCover()"></div></div><div class="row" style="margin-top:16px"><button class="btn" onclick="downloadCover()">⬇ Descargar portada JPG</button><button class="btn good" onclick="downloadClipAndCover()">📦 Descargar Clip + Portada</button><button class="btn alt" onclick="drawCover()">↻ Actualizar</button></div></div><div class="card cover-preview"><canvas id="coverCanvas" width="1080" height="1920" style="width:100%;border-radius:18px;background:#111"></canvas></div></div></section>
-</div></div></main>
-<div id="clipModal" class="modal"><div class="modal-card" id="clipModalContent"></div></div>
+<div id="clipModal" class="modal"><div class="modal-card"><div class="modal-grid"><video id="modalVideo" controls></video><div><h2 id="modalTitle"></h2><div class="desc" id="modalDesc"></div><div class="thumbs" id="modalThumbs"></div><div class="actions" style="margin-top:16px"><button class="btn" onclick="closeModal()">Cerrar</button></div></div></div></div></div>
+
 <script>
-const AGENT='http://127.0.0.1:3847',$=id=>document.getElementById(id);
-let libraryQuery='',activeFolder='Todos',libraryScroll=0,liveTimer=null,coverImg=null;
-function showView(id){const target=$(id);if(!target)return;document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===id));window.scrollTo({top:0,behavior:'smooth'});if(id==='library')renderLibrary();if(id==='publish'){clipOptions();updatePublishPreview()}if(id==='cover'){clipOptions();updateCoverClip()}}
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>showView(b.dataset.view));
-function getLib(){try{return JSON.parse(localStorage.getItem('cliprd-library')||'[]')}catch{return[]}}
-function setLib(x){localStorage.setItem('cliprd-library',JSON.stringify(x));renderLibrary();clipOptions();stats()}
-function escapeHtml(v){return String(v||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-function clipFolder(x){if(x.folder)return x.folder;const d=new Date(x.created||Date.now());return 'Nuevos · '+d.toLocaleDateString('es-DO',{month:'short',day:'numeric'})}
-function clipStart(x){if(Number.isFinite(Number(x.start)))return Number(x.start);const m=String(x.name||'').match(/(\d+)s\s*[–-]/);return m?Number(m[1]):Number.MAX_SAFE_INTEGER}
-function formatTime(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
-function fallbackHashtags(seed=''){const words=(String(seed).toLowerCase().match(/[a-záéíóúñ0-9]{4,}/g)||[]).filter((v,i,a)=>a.indexOf(v)===i).slice(0,5).map(v=>'#'+v.replace(/[^a-záéíóúñ0-9]/g,''));const base=['#shorts','#viral','#fyp','#reels','#RepublicaDominicana','#RD','#Dominicana','#CLIPRD','#ClipRD','#CreadorRD'];return [...new Set([...base,...words])].slice(0,15)}
-function autoCopy(o,sourceTitle=''){const transcript=String(o.clipTranscript||o.transcript||'').replace(/\s+/g,' ').trim();const minute=formatTime(o.start||0);const seed=transcript||((o.title||sourceTitle||'Nuevo momento')+' desde '+minute);const clean=seed.replace(/[“”"]/g,'').trim();const title=(o.title&&String(o.title).trim()||clean).slice(0,70);const hook=clean.slice(0,115)||'Un momento que tienes que ver';const summary=transcript?transcript.slice(0,240):'Este corte empieza en el minuto '+minute+' del contenido original.';const hashtags=Array.isArray(o.hashtags)&&o.hashtags.length?[...new Set(o.hashtags.map(h=>String(h).startsWith('#')?String(h):'#'+h))].slice(0,15):fallbackHashtags(seed);const description=o.description&&String(o.description).trim()?String(o.description).trim():hook+'\n\n'+summary+'\n\n¿Tú qué opinas? Sígueme, comenta y comparte.\n\n'+hashtags.join(' ');return {title,description,hashtags}}
-function makeFallbackCover(title='CLIPRD'){const cv=document.createElement('canvas');cv.width=1080;cv.height=1920;const x=cv.getContext('2d');const g=x.createLinearGradient(0,0,1080,1920);g.addColorStop(0,'#6d28d9');g.addColorStop(.52,'#312e81');g.addColorStop(1,'#06b6d4');x.fillStyle=g;x.fillRect(0,0,1080,1920);x.fillStyle='rgba(0,0,0,.34)';x.fillRect(0,1050,1080,870);x.fillStyle='#fff';x.font='900 92px Arial';const words=String(title).toUpperCase().split(/\s+/);let line='',y=1250;for(const word of words.slice(0,12)){const test=(line?line+' ':'')+word;if(x.measureText(test).width>920&&line){x.fillText(line,70,y);y+=110;line=word}else line=test}if(line)x.fillText(line,70,y);x.fillStyle='#a5f3fc';x.font='800 46px Arial';x.fillText('CLIPRD · CREATOR STUDIO',70,1810);return cv.toDataURL('image/jpeg',.9)}
-function weekStart(d=new Date()){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x}
-function transcriptWords(x){return String(x.clipTranscript||x.transcript||'').toLowerCase().split(/\s+/).filter(Boolean)}
-function viralData(x){const words=transcriptWords(x),text=words.join(' ');const impact=['increíble','impactante','polémica','polémico','escándalo','nadie','nunca','verdad','secreto','urgente','dinero','millones','fraude','locura','wow'];const emotion=['amo','odio','miedo','lloro','feliz','rabia','sorprende','increíble','brutal'];let points=0,reasons=[];const q=(text.match(/\?/g)||[]).length+(text.match(/\b(qué|como|por qué|quien|cuándo)\b/g)||[]).length;if(q){points+=18;reasons.push('pregunta')}const hi=impact.filter(w=>text.includes(w));if(hi.length){points+=Math.min(28,hi.length*7);reasons.push('alto impacto')}const em=emotion.filter(w=>text.includes(w));if(em.length){points+=Math.min(20,em.length*5);reasons.push('emoción')}const dur=Math.max(0,(Number(x.end)||0)-(Number(x.start)||0));if(dur>=30&&dur<=60){points+=20;reasons.push('duración ideal')}else if(dur>=20&&dur<=90){points+=10;reasons.push('duración útil')}const hook=String(x.clipTranscript||'').trim().split(/[.!?]/)[0]||x.title||x.name||'';if(hook.split(/\s+/).length>=4){points+=8;reasons.push('gancho claro')}const score=Math.max(0,Math.min(100,Math.round(points)));return {score,hook:hook.slice(0,140),reason:score+'/100 porque tiene '+(reasons.length?reasons.join(' + '):'poca señal en la transcripción')}}
-function ensureClipMeta(x){const copy=autoCopy(x,x.sourceTitle||'Contenido original'),v=viralData({...x,...copy});x.title=(x.title||copy.title).slice(0,70);x.description=x.description||copy.description;x.hashtags=x.hashtags?.length?x.hashtags:copy.hashtags;x.hook=x.hook||v.hook;x.viralScore=typeof x.viralScore==='number'?x.viralScore:v.score;x.viralReason=x.viralReason||v.reason;x.subtitles=x.subtitles||null;x.created=x.created||Date.now();return x}
-function stats(){const a=getLib().map(ensureClipMeta),now=new Date(),today=now.toDateString(),ws=weekStart(now),prev=new Date(ws);prev.setDate(prev.getDate()-7);const latest=[...a].sort((x,y)=>(y.created||0)-(x.created||0))[0];$('clipCount').textContent=a.length;$('folderCount').textContent=new Set(a.map(clipFolder)).size;$('todayCount').textContent=a.filter(x=>new Date(x.created||0).toDateString()===today).length;$('weekCount').textContent=a.filter(x=>new Date(x.created||0)>=ws).length;$('lastClip').textContent=latest?String(latest.title||latest.name||'Clip').slice(0,22):'—';renderAnalytics(a,ws,prev)}
-function renderAnalytics(a,ws,prev){const bars=$('weeklyBars'),top=$('topClips'),cmp=$('weekCompare');if(!bars||!top)return;const labels=['L','M','X','J','V','S','D'];const counts=labels.map((_,i)=>{const d=new Date(ws);d.setDate(ws.getDate()+i);return a.filter(x=>{const z=new Date(x.created||0);return z.toDateString()===d.toDateString()}).length});const max=Math.max(1,...counts);bars.innerHTML=counts.map((n,i)=>'<div class="bar" style="height:'+Math.max(8,Math.round(n/max*100))+'%"><i>'+n+'</i><span>'+labels[i]+'</span></div>').join('');const current=a.filter(x=>new Date(x.created||0)>=ws).length,previous=a.filter(x=>{const d=new Date(x.created||0);return d>=prev&&d<ws}).length;cmp.textContent='Esta semana: '+current+' · Semana pasada: '+previous;top.innerHTML=[...a].sort((x,y)=>(viralData(y).score)-(viralData(x).score)).slice(0,3).map((x,i)=>'<div class="topclip"><span>#'+(i+1)+' '+escapeHtml(x.title||x.name)+'</span><b>🔥 '+viralData(x).score+'/100</b></div>').join('')||'<div class="small">Aún no hay clips.</div>'}
-function ordered(a){const mode=$('sortMode')?.value||'start-asc';return [...a].sort((p,q)=>mode==='viral'?(viralData(q.x).score-viralData(p.x).score):mode==='start-asc'?clipStart(p.x)-clipStart(q.x):mode==='start-desc'?clipStart(q.x)-clipStart(p.x):mode==='oldest'?(p.x.created||0)-(q.x.created||0):(q.x.created||0)-(p.x.created||0))}
-function renderLibrary(){const a=getLib().map(ensureClipMeta),g=$('libraryGrid');stats();const folders=['Todos',...new Set(a.map(clipFolder))];$('folderBar').innerHTML=folders.map(f=>'<button class="'+(activeFolder===f?'active':'')+'" data-folder="'+escapeHtml(encodeURIComponent(f))+'">'+escapeHtml(f)+'</button>').join('');document.querySelectorAll('#folderBar [data-folder]').forEach(b=>b.onclick=()=>setFolder(decodeURIComponent(b.dataset.folder)));const q=libraryQuery.toLowerCase();let visible=a.map((x,i)=>({x,i})).filter(({x})=>[x.name,x.title,x.description,x.clipTranscript,clipFolder(x),x.hook].join(' ').toLowerCase().includes(q)&&(activeFolder==='Todos'||clipFolder(x)===activeFolder));visible=ordered(visible);$('libraryStats').textContent=visible.length+' de '+a.length+' clips';g.innerHTML=visible.length?visible.map(({x,i})=>{const score=viralData(x),range=formatTime(x.start)+' - '+formatTime(x.end),sub=x.subtitles?'':' subtitle-off';return '<article class="clip"><div class="badge">🔥 '+score.score+'/100</div><div class="preview" id="preview-'+i+'">'+(x.coverUrl?'<img class="cover" src="'+escapeHtml(x.coverUrl)+'" alt="">':'')+'<video preload="metadata" playsinline poster="'+escapeHtml(x.coverUrl||'')+'" src="'+escapeHtml(x.url||'')+'" ontimeupdate="updateSubtitle('+i+',this)"></video><div class="subtitle-layer'+sub+'" id="sub-'+i+'"></div><button class="play" onclick="playClip('+i+',this)">▶</button></div><div class="meta"><span class="folder">📁 '+escapeHtml(clipFolder(x))+'</span><div class="clip-meta"><span class="chip">⏱ '+range+'</span><span class="chip">⏳ '+formatTime((Number(x.end)||0)-(Number(x.start)||0))+'</span></div><div class="title">'+escapeHtml(x.title||x.name||'Clip sin título')+'</div><div class="hook">⚡ GANCHO: '+escapeHtml(score.hook||'Pendiente de transcripción')+'</div><div class="desc">'+escapeHtml(x.description||'Sin descripción automática.')+'</div><div class="small">📊 '+escapeHtml(score.reason)+'</div><div class="actions"><button class="btn" onclick="playClip('+i+')">▶ Preview</button><button class="btn alt" onclick="toggleSubtitles('+i+')">💬 Subtítulos</button><button class="btn alt" onclick="toggleDynamic('+i+')">🔍 Efecto</button><button class="btn alt" onclick="openClip('+i+')">↗ Abrir</button><button class="btn alt" onclick="copyDescription('+i+')">📋 Copiar</button><button class="btn alt" onclick="openCoverForClip('+i+')">🖼️ Portada</button><button class="btn alt" onclick="downloadSRT('+i+')">SRT</button><a class="btn alt" href="'+escapeHtml(x.url||'#')+'" download>⬇ MP4</a></div></div></article>'}).join(''):'<div class="empty">Todavía no hay clips en este espacio.<br><br>Genera contenido y CLIPRD lo organizará aquí.</div>'}
-function filterLibrary(){libraryQuery=(($('librarySearch')?.value)||($('globalSearch')?.value)||'').trim();renderLibrary()}function setFolder(f){activeFolder=f;renderLibrary()}
-function playClip(i){const x=getLib()[i],v=[...document.querySelectorAll('video')].find(z=>z.getAttribute('src')===x.url);if(v){v.controls=true;v.paused?v.play().catch(()=>{}):v.pause();v.scrollIntoView({behavior:'smooth',block:'center'})}}
-function subtitleWords(x){const raw=String(x.clipTranscript||'').trim();return raw?raw.split(/\s+/):[]}
-function updateSubtitle(i,v){const el=$('sub-'+i),x=getLib()[i];if(!el||!x)return;const w=subtitleWords(x);if(!w.length){el.textContent='Subtítulos disponibles cuando el motor entregue transcripción';return}const dur=Math.max(1,(Number(x.end)||0)-(Number(x.start)||0)),p=Math.min(w.length-1,Math.floor((v.currentTime/dur)*w.length));const from=Math.max(0,p-3),to=Math.min(w.length,p+4);el.innerHTML=w.slice(from,to).map((z,n)=>'<span class="'+(from+n===p?'activeword':'')+'">'+escapeHtml(z)+' </span>').join('')}
-function toggleSubtitles(i){$('sub-'+i)?.classList.toggle('subtitle-off')}function toggleDynamic(i){$('preview-'+i)?.classList.toggle('dynamic')}
-function srtTime(sec){const ms=Math.max(0,Math.round(sec*1000)),h=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000),s=Math.floor(ms%60000/1000),z=ms%1000;return [h,m,s].map(v=>String(v).padStart(2,'0')).join(':')+','+String(z).padStart(3,'0')}
-function downloadSRT(i){const x=getLib()[i],w=subtitleWords(x);if(!w.length){alert('Este clip aún no tiene transcripción. El espacio queda listo para cuando el motor la devuelva.');return}const start=Number(x.start)||0,dur=Math.max(1,(Number(x.end)||0)-start),step=dur/w.length;const body=w.map((word,n)=>(n+1)+'\n'+srtTime(n*step)+' --> '+srtTime((n+1)*step)+'\n'+word+'\n').join('\n');const blob=new Blob([body],{type:'text/plain'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='cliprd-subtitulos.srt';a.click();setTimeout(()=>URL.revokeObjectURL(u),3000)}
-function openClip(i){libraryScroll=scrollY;const x=ensureClipMeta(getLib()[i]);if(!x)return;const thumbs=(x.thumbnails||[]).slice(0,5);$('clipModalContent').innerHTML='<div class="row" style="justify-content:space-between;align-items:center"><div><div class="eyebrow">CLIP PREVIEW</div><h2 style="margin:6px 0">'+escapeHtml(x.title||x.name||'Clip')+'</h2></div><button class="btn alt" onclick="closeClipModal()">← Volver</button></div><div class="modal-grid"><div><video controls autoplay playsinline poster="'+escapeHtml(x.coverUrl||'')+'" src="'+escapeHtml(x.url||'')+'"></video></div><div><div class="panel"><div class="eyebrow">GANCHO + SCORE</div><b>⚡ '+escapeHtml(viralData(x).hook)+'</b><p class="small">'+escapeHtml(viralData(x).reason)+'</p></div><div class="panel"><div class="eyebrow">DESCRIPCIÓN PARA PUBLICAR</div><p style="white-space:pre-line;line-height:1.65">'+escapeHtml(x.description)+'</p><div class="row"><button class="btn" onclick="copyDescription('+i+')">📋 Copiar descripción</button><button class="btn alt" onclick="selectClipForPublish('+i+');closeClipModal()">🚀 Publicar</button></div></div><div class="panel"><div class="eyebrow">TRANSCRIPCIÓN</div><p class="small" style="white-space:pre-line">'+escapeHtml(x.clipTranscript||'Disponible cuando el motor entregue la transcripción.')+'</p></div>'+(thumbs.length?'<div class="panel"><div class="eyebrow">FOTOGRAMAS</div><div class="thumbs">'+thumbs.map((u,n)=>'<img src="'+escapeHtml(u)+'" onclick="chooseThumbnail('+i+','+n+')">').join('')+'</div></div>':'')+'</div></div>';$('clipModal').classList.add('open')}
-function closeClipModal(){$('clipModal').classList.remove('open');requestAnimationFrame(()=>scrollTo({top:libraryScroll,behavior:'instant'}))}
-function chooseThumbnail(i,n){const a=getLib(),x=a[i];if(!x?.thumbnails?.[n])return;x.coverUrl=x.thumbnails[n];a[i]=x;setLib(a);openClip(i)}
-function clearLibrary(){if(confirm('¿Eliminar los clips guardados localmente?'))setLib([])}
-async function checkEngine(){const status=$('engineStatus'),info=$('engineInfo'),dot=$('dot');if(!status||!info||!dot)return;status.textContent='Comprobando motor…';try{const r=await Promise.race([fetch(AGENT+'/health?ts='+Date.now(),{cache:'no-store'}),new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')),2500))]);const x=await r.json();if(!r.ok||!x.ok)throw Error('Motor no listo');status.textContent='Motor local conectado';dot.classList.add('on');info.textContent='ONLINE · listo para crear clips'}catch(e){status.textContent='Motor local desconectado';dot.classList.remove('on');info.textContent='Abre el agente y ejecuta npm start'}}
-async function createClips(){const url=$('sourceUrl').value.trim(),len=+$('clipLength').value,max=+$('maxClips').value,folder=$('jobFolder').value.trim(),st=$('jobStatus');if(!/^https?:\/\//i.test(url)){st.textContent='❌ Introduce una URL válida.';return}st.textContent='⏳ Enviando trabajo al motor local…';try{let r=await fetch(AGENT+'/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});if(r.status===404)r=await fetch(AGENT+'/api/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});let x={};try{x=await r.json()}catch{}if(!r.ok)throw Error(x.error||'El motor respondió HTTP '+r.status);const now=Date.now(),sourceTitle=(url.split('/').pop()||'Contenido original').replace(/[-_]/g,' '),items=(x.outputs||[]).map((o,i)=>{const start=Number(o.start)||0,end=Number(o.end)||0,copy=autoCopy({...o,start,end},sourceTitle);const thumbs=Array.isArray(o.thumbnails)?o.thumbnails.filter(Boolean).slice(0,3):[];const cover=o.coverUrl||o.cover||thumbs[0]||makeFallbackCover(copy.title);return ensureClipMeta({name:o.title||copy.title||('Clip '+(i+1)),title:copy.title,url:o.url,coverUrl:cover,description:copy.description,hashtags:copy.hashtags,clipTranscript:o.clipTranscript||o.transcript||'',thumbnails:thumbs,created:o.created||now+i,start,end,folder:folder||undefined,viralScore:o.viralScore||o.score})});if(!items.length)throw Error('El motor terminó sin devolver clips.');setLib([...items,...getLib()]);st.textContent='✅ '+items.length+' clips listos y guardados en la Biblioteca.';showView('library')}catch(e){st.textContent='❌ '+e.message}}
-function youtubeId(url){try{const u=new URL(url);if(u.hostname.includes('youtu.be'))return u.pathname.split('/').filter(Boolean)[0];if(u.searchParams.get('v'))return u.searchParams.get('v');const p=u.pathname.match(/\/(live|embed|shorts)\/([^/?]+)/);return p?p[2]:null}catch{return null}}
-function openLive(){const id=youtubeId($('liveUrl').value.trim());if(!id){$('liveStatus').textContent='❌ URL de YouTube inválida.';return false}$('liveFrame').src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?autoplay=1&mute=1';return true}
-function getMarks(){try{return JSON.parse(localStorage.getItem('cliprd-live-marks')||'[]')}catch{return[]}}function setMarks(x){localStorage.setItem('cliprd-live-marks',JSON.stringify(x));renderMarks()}
-function renderMarks(){const a=getMarks(),box=$('liveMarks');if(box)box.innerHTML=a.slice(-8).map(x=>'<span class="live-mark">⚡ '+formatTime(x.time)+' '+escapeHtml(x.label||'Momento')+'</span>').join('')}
-function markLiveMoment(){const mark={time:Math.floor((Date.now()-(window.liveStartedAt||Date.now()))/1000),created:Date.now(),label:'Momento marcado'};setMarks([...getMarks(),mark]);$('liveStatus').textContent='⚡ Momento guardado: '+formatTime(mark.time)}
-function addLiveOutputs(outputs){if(!Array.isArray(outputs)||!outputs.length)return;const old=getLib(),known=new Set(old.map(x=>x.url)),fresh=outputs.filter(o=>o.url&&!known.has(o.url)).map((o,i)=>ensureClipMeta({...o,name:o.title||('🔴 Live Clip '+(i+1)),created:o.created||Date.now(),folder:'🔴 Live'}));if(fresh.length)setLib([...fresh,...old])}
-async function pollLive(){try{const r=await fetch(AGENT+'/live/status',{cache:'no-store'}),x=await r.json();$('liveState').textContent=x.active?'🔴 RADAR ACTIVO':'STANDBY';$('liveMeta').textContent=x.active?' · '+(x.processedSegments||0)+' segmentos analizados':' · monitor detenido';$('liveEvents').innerHTML=(x.events||[]).slice(0,6).map(e=>'• '+new Date(e.time).toLocaleTimeString()+' — '+escapeHtml(e.message)).join('<br>')||'Esperando eventos…';if(x.lastError)$('liveStatus').textContent='⚠️ '+x.lastError;addLiveOutputs(x.outputs)}catch{$('liveState').textContent='MOTOR NO DISPONIBLE'}}
-async function startLiveAuto(){const url=$('liveUrl').value.trim();if(!/^https?:\/\//i.test(url)){$('liveStatus').textContent='❌ Introduce una URL válida.';return}openLive();window.liveStartedAt=Date.now();try{const r=await fetch(AGENT+'/live/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:+$('liveClipLength').value,maxClips:+$('liveMaxClips').value})}),x=await r.json();if(!r.ok)throw Error(x.error||'No se pudo iniciar');$('liveStatus').textContent='🟢 Radar activo. Marca momentos importantes con el botón.';clearInterval(liveTimer);liveTimer=setInterval(pollLive,8000);pollLive()}catch(e){$('liveStatus').textContent='❌ '+e.message}}
-async function stopLiveAuto(){try{await fetch(AGENT+'/live/stop',{method:'POST'});$('liveStatus').textContent='■ Radar detenido. Los momentos marcados quedan guardados primero.'}catch(e){$('liveStatus').textContent='⚠️ '+e.message}clearInterval(liveTimer);pollLive()}
-function clipOptions(){const a=getLib(),h=a.length?a.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.title||x.name||('Clip '+(i+1)))+'</option>').join(''):'<option value="">No hay clips todavía</option>';['publishClip','coverClip','calendarClip'].forEach(id=>{if($(id))$(id).innerHTML=h})}
-function selectClipForPublish(i){showView('publish');clipOptions();$('publishClip').value=i;updatePublishPreview()}
-let currentPlatform='youtube';function setPlatform(p){currentPlatform=p;document.querySelectorAll('[data-platform]').forEach(b=>b.classList.toggle('active',b.dataset.platform===p));updatePublishPreview()}
-function platformCopy(x,p){const h=(x.hashtags||[]);if(p==='youtube')return {title:(x.title||x.name||'').slice(0,100),desc:x.description||''};if(p==='tiktok')return {title:(x.title||x.name||'').slice(0,70),desc:[(x.hook||x.title||'').slice(0,120),h.slice(0,15).join(' ')].join('\n\n')};return {title:(x.title||x.name||'').slice(0,70),desc:[(x.hook||x.title||'').slice(0,110),h.slice(0,8).join(' ')].join('\n\n')}}
-function updatePublishPreview(){const x=getLib()[+$('publishClip').value];if(!x)return;const cp=platformCopy(ensureClipMeta(x),currentPlatform);$('publishTitle').value=cp.title;$('publishDescription').value=cp.desc;$('platformTitle').textContent=currentPlatform==='youtube'?'YouTube Shorts':currentPlatform==='tiktok'?'TikTok':'Instagram Reels';$('publishPreview').textContent='🎬 '+(x.title||x.name)+' listo para '+$('platformTitle').textContent+'.'}
-async function downloadClipFile(url,name){if(!url)throw Error('El clip no tiene archivo.');const r=await fetch(url);if(!r.ok)throw Error('No se pudo descargar el archivo.');const blob=await r.blob(),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=(name||'cliprd-clip').replace(/[\\/:*?"<>|]/g,'_')+'.mp4';a.click();setTimeout(()=>URL.revokeObjectURL(u),10000)}
-function markPublished(i,p){const a=getLib(),x=a[i];x.published=x.published||{};x.published[p]=Date.now();a[i]=x;setLib(a)}
-async function publishTo(platform){const i=+$('publishClip').value,x=getLib()[i];if(!x)return;$('publishStatus').textContent='⬇️ Preparando descarga…';try{await navigator.clipboard.writeText(($('publishTitle').value+'\n\n'+$('publishDescription').value).trim())}catch{}try{await downloadClipFile(x.url,x.name);markPublished(i,platform);$('publishStatus').textContent='✅ Archivo descargado, texto copiado y publicación marcada.'}catch(e){$('publishStatus').textContent='⚠️ '+e.message}const dest={youtube:'https://studio.youtube.com/',tiktok:'https://www.tiktok.com/upload',instagram:'https://www.instagram.com/'};window.open(dest[platform],'_blank','noopener')}
-async function copyPublishAll(){try{await navigator.clipboard.writeText(($('publishTitle').value+'\n\n'+$('publishDescription').value).trim());$('publishStatus').textContent='✅ Título y texto copiados.'}catch{}}
-async function copyDescription(i){const x=ensureClipMeta(getLib()[i]);try{await navigator.clipboard.writeText(x.description||'');alert('✅ Descripción copiada')}catch{}}
-function openCoverForClip(i){showView('cover');clipOptions();$('coverClip').value=i;updateCoverClip()}
-function coverVariant(title,variant){const cv=document.createElement('canvas');cv.width=1080;cv.height=1920;const ctx=cv.getContext('2d');const g=ctx.createLinearGradient(0,0,1080,1920);if(variant===0){g.addColorStop(0,'#6d28d9');g.addColorStop(1,'#06b6d4')}else{g.addColorStop(0,'#111827');g.addColorStop(.55,'#7c3aed');g.addColorStop(1,'#22d3ee')}ctx.fillStyle=g;ctx.fillRect(0,0,1080,1920);ctx.fillStyle='rgba(0,0,0,.38)';ctx.fillRect(0,950,1080,970);ctx.fillStyle='#fff';ctx.font='900 100px Arial';let y=1200,line='';for(const w of String(title).toUpperCase().split(/\s+/).slice(0,10)){const t=(line?line+' ':'')+w;if(ctx.measureText(t).width>920&&line){ctx.fillText(line,70,y);y+=120;line=w}else line=t}if(line)ctx.fillText(line,70,y);ctx.fillStyle=variant?'#fef08a':'#a5f3fc';ctx.font='800 42px Arial';ctx.fillText('CLIPRD · '+(variant?'B':'A'),70,1810);return cv.toDataURL('image/jpeg',.9)}
-function updateCoverClip(){const x=ensureClipMeta(getLib()[+$('coverClip').value]||{}),box=$('coverCandidates');if(!x||!Object.keys(x).length){box.innerHTML='';return}$('coverText').value=(x.title||x.name||'MOMENTO VIRAL').slice(0,52);$('coverSubtext').value='🔥 '+((x.hashtags||[]).slice(0,2).join(' ')||'MOMENTO VIRAL');const t=x.thumbnails?.length?x.thumbnails:[x.coverUrl].filter(Boolean);box.innerHTML=t.length?t.map((u,n)=>'<img src="'+escapeHtml(u)+'" onclick="selectCoverCandidate('+$('coverClip').value+','+n+')">').join(''):'<span class="small">El motor no devolvió fotogramas: CLIPRD creó portada A/B.</span>';x.coverVariants=x.coverVariants?.length?x.coverVariants:[x.coverUrl||coverVariant(x.title,0),coverVariant(x.title,1)];const ab=$('abCovers');ab.innerHTML=x.coverVariants.map((u,n)=>'<button class="'+(x.coverUrl===u?'selected':'')+'" onclick="selectCoverVariant('+$('coverClip').value+','+n+')"><img src="'+u+'"></button>').join('');const a=getLib();a[+$('coverClip').value]=x;localStorage.setItem('cliprd-library',JSON.stringify(a));loadImageUrl(x.coverUrl||x.coverVariants[0]||t[0]||'');drawCover()}
-function selectCoverCandidate(i,n){const a=getLib(),x=a[i];if(x?.thumbnails?.[n]){x.coverUrl=x.thumbnails[n];a[i]=x;setLib(a);updateCoverClip()}}
-function selectCoverVariant(i,n){const a=getLib(),x=a[i];if(x?.coverVariants?.[n]){x.coverUrl=x.coverVariants[n];a[i]=x;setLib(a);updateCoverClip()}}
-function loadImageUrl(src){if(!src){coverImg=null;return false}const img=new Image();img.crossOrigin='anonymous';img.onload=()=>{coverImg=img;drawCover()};img.onerror=()=>{coverImg=null;drawCover()};img.src=src;return true}
-function drawCover(){const c=$('coverCanvas'),ctx=c?.getContext('2d');if(!ctx)return;const w=c.width,h=c.height;ctx.clearRect(0,0,w,h);if(coverImg){const r=Math.max(w/coverImg.width,h/coverImg.height),iw=coverImg.width*r,ih=coverImg.height*r;ctx.drawImage(coverImg,(w-iw)/2,(h-ih)/2,iw,ih)}else{const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,'#6d28d9');g.addColorStop(1,'#06b6d4');ctx.fillStyle=g;ctx.fillRect(0,0,w,h)}const o=ctx.createLinearGradient(0,0,0,h);o.addColorStop(0,'rgba(0,0,0,.02)');o.addColorStop(1,'rgba(0,0,0,.9)');ctx.fillStyle=o;ctx.fillRect(0,0,w,h);ctx.fillStyle='#a78bfa';ctx.font='900 52px Arial';ctx.fillText('CLIPRD',70,100);ctx.fillStyle=$('coverTextColor')?.value||'#fff';ctx.font='900 105px Arial';let words=($('coverText').value||'MOMENTO VIRAL').toUpperCase().split(/\s+/),lines=[],line='';for(const word of words){const test=(line?line+' ':'')+word;if(ctx.measureText(test).width>w-140&&line){lines.push(line);line=word}else line=test}if(line)lines.push(line);let y=h-470;lines.slice(0,4).forEach(l=>{ctx.fillText(l,70,y);y+=120});ctx.fillStyle=$('coverAccentColor')?.value||'#22d3ee';ctx.font='700 40px Arial';ctx.fillText(($('coverSubtext').value||'CLIPRD').toUpperCase(),70,h-100)}
-function saveCurrentCover(){const i=+$('coverClip').value,a=getLib(),x=a[i];if(!x)return;drawCover();x.coverUrl=$('coverCanvas').toDataURL('image/jpeg',.92);a[i]=x;setLib(a)}
-function downloadCover(){saveCurrentCover();const a=document.createElement('a');a.download='cliprd-portada.jpg';a.href=$('coverCanvas').toDataURL('image/jpeg',.92);a.click()}
-async function downloadClipAndCover(){const x=getLib()[+$('coverClip').value];if(!x)return;saveCurrentCover();downloadCover();try{await downloadClipFile(x.url,x.name);alert('✅ Portada y clip preparados para descargar.')}catch(e){alert('⚠️ Portada lista. '+e.message)}}
-function ideasStore(){try{return JSON.parse(localStorage.getItem('cliprd-ideas')||'[]')}catch{return[]}}function saveIdeas(a){localStorage.setItem('cliprd-ideas',JSON.stringify(a));renderSavedIdeas()}
-function generateIdeas(){const topic=$('ideaTopic').value.trim()||'creadores de contenido en República Dominicana';const angles=['verdad incómoda','error común','historia real','comparación','paso a paso','opinión polémica','mito vs realidad','reto','secreto','caso práctico'];const ideas=Array.from({length:20},(_,i)=>{const angle=angles[i%angles.length];return {id:Date.now()+i,title:topic+': '+angle+' que detiene el scroll',hook:'En 3 segundos: ¿sabías esto sobre '+topic+'?',script:'Empieza con una pregunta fuerte. Explica el punto principal sobre '+topic+' con un ejemplo concreto. Cierra con una opinión y pide a la audiencia que comente.'}});$('ideaList').innerHTML=ideas.map((x,i)=>'<div class="idea"><b>'+escapeHtml(x.title)+'</b><div class="small">⚡ '+escapeHtml(x.hook)+'</div><p class="small">'+escapeHtml(x.script)+'</p><button class="btn alt" onclick="saveIdea('+i+')">💾 Guardar idea</button> <button class="btn" onclick="useIdea('+i+')">🎬 Usar idea</button></div>').join('');window.generatedIdeas=ideas}
-function saveIdea(i){const x=window.generatedIdeas?.[i];if(x)saveIdeas([x,...ideasStore().filter(y=>y.id!==x.id)])}
-function useIdea(i){const x=window.generatedIdeas?.[i];if(!x)return;$('sourceUrl').value='';$('jobFolder').value='Idea: '+x.title;showView('studio');$('jobStatus').textContent='💡 Idea elegida: '+x.title+' · pega tu fuente autorizada para convertirla en clips.'}
-function renderSavedIdeas(){const a=ideasStore(),box=$('savedIdeas');if(box)box.innerHTML=a.length?a.map(x=>'<div class="idea"><b>'+escapeHtml(x.title)+'</b><div class="small">⚡ '+escapeHtml(x.hook)+'</div></div>').join(''):'<div class="small">Aún no has guardado ideas.</div>'}
-function calendarStore(){try{return JSON.parse(localStorage.getItem('cliprd-calendar')||'[]')}catch{return[]}}function saveCalendar(a){localStorage.setItem('cliprd-calendar',JSON.stringify(a));renderCalendar()}
-function renderCalendar(){const days=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'],a=calendarStore(),box=$('weeklyCalendar'),q=$('publishQueue');if(box)box.innerHTML=days.map((d,i)=>{const defaults=['Clip polémico','','Clip de valor','','Clip chistoso','',''][i];const rows=a.filter(x=>x.day===d).map(x=>'<div class="scheduled" onclick="toggleScheduleStatus('+x.id+')">'+escapeHtml(x.time)+' · '+escapeHtml(x.platform)+'<br>'+escapeHtml(x.title)+'<br><span class="status-check">'+(x.status==='published'?'✓ Ya publicado':'⏳ Programado')+'</span></div>').join('');return '<div class="day"><b>'+d+'</b><div class="small">'+defaults+'</div>'+rows+'</div>'}).join('');if(q)q.innerHTML=a.length?a.map(x=>'<div class="queue-item"><b>'+escapeHtml(x.day)+' '+escapeHtml(x.time)+' · '+escapeHtml(x.platform)+'</b><div class="small">'+escapeHtml(x.title)+' · '+(x.status==='published'?'Ya publicado':'Programado')+'</div></div>').join(''):'<div class="small">No hay clips programados.</div>'}
-function scheduleClip(){const i=+$('calendarClip').value,x=getLib()[i];if(!x)return;const a=calendarStore();a.push({id:Date.now(),clipIndex:i,title:x.title||x.name,day:$('calendarDay').value,time:$('calendarTime').value,platform:$('calendarPlatform').value,status:'scheduled'});saveCalendar(a)}
-function toggleScheduleStatus(id){saveCalendar(calendarStore().map(x=>x.id===id?{...x,status:x.status==='published'?'scheduled':'published'}:x))}
-function generateTrends(){const topic=$('trendTopic').value.trim()||'contenido, entretenimiento y creadores en RD';const patterns=['debate que genera opiniones','historia personal que conecta','consejo práctico rápido','comparación que divide opiniones','reto con reacción'];const trends=patterns.map((p,i)=>({title:(topic+' · '+p).slice(0,90),detail:'Ángulo '+(i+1)+' para convertir la tendencia en clips y contenido propio.'}));$('trendList').innerHTML=trends.map((x,i)=>'<div class="trend"><b>🔥 '+escapeHtml(x.title)+'</b><div class="small">'+escapeHtml(x.detail)+'</div><button class="btn alt" style="margin-top:8px" onclick="trendToIdea('+i+')">💡 Crear idea de esto</button></div>').join('');window.currentTrends=trends}
-function trendToIdea(i){const x=window.currentTrends?.[i];if(!x)return;$('ideaTopic').value=x.title;showView('ideas');generateIdeas()}
-try{renderLibrary();clipOptions();stats();updateCoverClip();drawCover()}catch(e){console.error('CLIPRD UI init:',e)}checkEngine();
-</script><button class="logout-btn" onclick="logoutCliprd()">Cerrar sesión</button></div></body></html>
+const ENGINE = 'http://127.0.0.1:3847';
+let clips = JSON.parse(localStorage.getItem('cliprd_clips') || '[]');
+let ideas = JSON.parse(localStorage.getItem('cliprd_ideas') || '[]');
+
+function saveClips(){ localStorage.setItem('cliprd_clips', JSON.stringify(clips)); }
+function saveIdeas(){ localStorage.setItem('cliprd_ideas', JSON.stringify(ideas)); }
+
+function showView(name){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelector(`.view[data-view="${name}"]`)?.classList.add('active');
+  document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+}
+
+async function checkEngine(){
+  try{
+    const r = await fetch(ENGINE + '/health');
+    const ok = r.ok;
+    document.getElementById('engineDot').classList.toggle('on', ok);
+    document.getElementById('engineText').textContent = ok ? 'Motor OK' : 'Motor offline';
+    document.getElementById('engineStatus').textContent = ok ? 'Conectado' : 'Desconectado';
+  }catch(e){
+    document.getElementById('engineDot').classList.remove('on');
+    document.getElementById('engineText').textContent = 'Motor offline';
+    document.getElementById('engineStatus').textContent = 'Desconectado';
+  }
+}
+
+function stats(){
+  document.getElementById('statClips').textContent = clips.length;
+  document.getElementById('statIdeas').textContent = ideas.length;
+  document.getElementById('statPublished').textContent = clips.filter(c => c.published).length;
+  const scores = clips.map(c => c.viralScore || c.score || 0);
+  document.getElementById('statScore').textContent = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : 0;
+}
+
+function renderLibrary(){
+  const q = (document.getElementById('search')?.value || '').toLowerCase();
+  const folder = document.getElementById('folderFilter')?.value || '';
+  const sort = document.getElementById('sortClips')?.value || 'new';
+  let list = clips.filter(c => 
+    (!q || (c.title||'').toLowerCase().includes(q) || (c.description||'').toLowerCase().includes(q)) &&
+    (!folder || (c.folder||'').includes(folder))
+  );
+  if(sort==='score') list.sort((a,b)=>(b.viralScore||0)-(a.viralScore||0));
+  else if(sort==='title') list.sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+  else list.reverse();
+
+  const grid = document.getElementById('libraryGrid');
+  if(!grid) return;
+  grid.innerHTML = list.map(c => `
+    <div class="clip" data-id="${c.id}">
+      <div class="preview">
+        ${c.url ? `<video src="${c.url}" muted></video>` : '<div style="height:100%;background:#111"></div>'}
+        <button class="play" onclick="openClip('${c.id}')">▶</button>
+        <div class="badge">${c.viralScore||0}</div>
+      </div>
+      <div class="meta">
+        <div class="folder">${c.folder||'General'}</div>
+        <div class="title">${c.title||'Sin título'}</div>
+        <div class="desc">${c.description||''}</div>
+        <div class="actions">
+          <button onclick="openClip('${c.id}')">Ver</button>
+          <button onclick="deleteClip('${c.id}')">Borrar</button>
+        </div>
+      </div>
+    </div>
+  `).join('') || '<div class="empty">No hay clips</div>';
+}
+
+function openClip(id){
+  const c = clips.find(x => x.id === id);
+  if(!c) return;
+  document.getElementById('modalVideo').src = c.url || '';
+  document.getElementById('modalTitle').textContent = c.title || '';
+  document.getElementById('modalDesc').textContent = c.description || '';
+  document.getElementById('clipModal').classList.add('open');
+}
+
+function closeModal(){ document.getElementById('clipModal').classList.remove('open'); }
+
+function deleteClip(id){
+  clips = clips.filter(c => c.id !== id);
+  saveClips();
+  renderLibrary();
+  stats();
+}
+
+async function generateAutoClips(){
+  const notice = document.getElementById('studioNotice');
+  notice.textContent = 'Generando...';
+  try{
+    const r = await fetch(ENGINE + '/auto-clips', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        sourceUrl: document.getElementById('sourceUrl').value,
+        clipLength: Number(document.getElementById('clipLength').value),
+        maxClips: Number(document.getElementById('maxClips').value)
+      })
+    });
+    const data = await r.json();
+    if(!data.ok) throw new Error(data.error);
+    clips.push(...(data.clips||[]));
+    saveClips();
+    renderLibrary();
+    stats();
+    notice.textContent = `Listo: ${data.count} clips generados`;
+    document.getElementById('studioResult').innerHTML = (data.clips||[]).map(c=>`<div>${c.title}</div>`).join('');
+  }catch(e){
+    notice.textContent = 'Error: ' + e.message;
+  }
+}
+
+function startLive(){
+  fetch(ENGINE + '/live/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sourceUrl:document.getElementById('liveUrl').value})});
+  document.getElementById('liveStatus').textContent = 'Iniciado';
+}
+function markMoment(){
+  const marks = document.getElementById('liveMarks');
+  const t = new Date().toLocaleTimeString();
+  marks.innerHTML += `<div class="live-mark">${t}</div>`;
+}
+async function stopLive(){
+  const r = await fetch(ENGINE + '/live/stop', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
+  const data = await r.json();
+  if(data.clips){ clips.push(...data.clips); saveClips(); renderLibrary(); stats(); }
+  document.getElementById('liveStatus').textContent = 'Detenido';
+}
+
+function generateIdeas(){
+  const topic = document.getElementById('ideaTopic').value || 'CLIPRD';
+  const newIdeas = [
+    {title: topic + ' - Top momentos', score: 85},
+    {title: topic + ' - Reacción', score: 78},
+    {title: topic + ' - Explicación rápida', score: 72}
+  ];
+  ideas.push(...newIdeas);
+  saveIdeas();
+  renderIdeas();
+}
+function renderIdeas(){
+  const el = document.getElementById('ideasList');
+  if(!el) return;
+  el.innerHTML = ideas.map(i => `<div class="idea"><b>${i.title}</b><span class="small">Score: ${i.score}</span></div>`).join('');
+}
+
+function renderCalendar(){
+  const cal = document.getElementById('calendar');
+  if(!cal) return;
+  const days = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  cal.innerHTML = days.map(d => `<div class="day"><b>${d}</b></div>`).join('');
+}
+
+function saveSettings(){
+  localStorage.setItem('cliprd_ytkey', document.getElementById('ytKey').value);
+  alert('Guardado');
+}
+
+function logoutCliprd(){
+  document.getElementById('appShell').hidden = true;
+  document.getElementById('loginGate').style.display = 'grid';
+}
+
+// Login simple
+document.getElementById('loginForm')?.addEventListener('submit', e => {
+  e.preventDefault();
+  document.getElementById('loginGate').style.display = 'none';
+  document.getElementById('appShell').hidden = false;
+  init();
+});
+
+function init(){
+  stats();
+  renderLibrary();
+  renderIdeas();
+  renderCalendar();
+  checkEngine();
+  setInterval(checkEngine, 15000);
+}
+
+// Init si ya está logueado (demo)
+if(!document.getElementById('appShell').hidden) init();
+</script>
+<button class="logout-btn" onclick="logoutCliprd()">Cerrar sesión</button>
+</div>
+<script src="editor.js"></script>
+</body></html>
