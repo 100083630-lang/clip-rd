@@ -93,39 +93,46 @@ async function resolveSource(sourceUrl) {
 
   if (!isHttpUrl(sourceUrl)) {
     const localPath = path.resolve(sourceUrl);
-    if (!fs.existsSync(localPath)) {
-      throw new Error(`No existe el archivo local: ${localPath}`);
-    }
+    if (!fs.existsSync(localPath)) throw new Error(`No existe el archivo local: ${localPath}`);
     return localPath;
   }
 
-  const outputTemplate = path.join(downloadsDir, `source-${Date.now()}-%(id)s.%(ext)s`);
+  const jobId = randomUUID().slice(0, 8);
+  const outputTemplate = path.join(downloadsDir, `source-${jobId}.%(ext)s`);
+  const formats = ["bestvideo+bestaudio/best", "bv*+ba/best", "best", "worst"];
+  let lastError = null;
 
-  await run("yt-dlp", [
-    "--no-playlist",
-    "-f", "bv*+ba/b",
-    "--merge-output-format", "mp4",
-    "-o", outputTemplate,
-    "--print", "after_move:filepath",
-    sourceUrl
-  ]);
+  for (const format of formats) {
+    try {
+      console.log(`YT-DLP: intentando formato "${format}"…`);
+      const result = await run("yt-dlp", [
+        "--no-playlist",
+        "-f", format,
+        "--merge-output-format", "mp4",
+        "--newline",
+        "-o", outputTemplate,
+        "--print", "after_move:filepath",
+        sourceUrl
+      ]);
+      const printed = (result.stdout || "").trim().split(/\r?\n/).filter(Boolean);
+      const printedPath = printed.find(line => fs.existsSync(line));
+      if (printedPath) return printedPath;
 
-  const candidates = fs.readdirSync(downloadsDir)
-    .map((name) => ({
-      name,
-      fullPath: path.join(downloadsDir, name),
-      mtime: fs.statSync(path.join(downloadsDir, name)).mtimeMs
-    }))
-    .filter((item) => /\.(mp4|mkv|webm|mov|m4v)$/i.test(item.name))
-    .sort((a, b) => b.mtime - a.mtime);
+      const candidates = fs.readdirSync(downloadsDir)
+        .filter(name => name.startsWith(`source-${jobId}.`) && /\.(mp4|mkv|webm|mov|m4v)$/i.test(name))
+        .map(name => path.join(downloadsDir, name))
+        .filter(file => fs.existsSync(file));
+      if (candidates.length) return candidates[0];
 
-  if (!candidates.length) {
-    throw new Error("yt-dlp terminó pero no se encontró el video descargado.");
+      throw new Error("yt-dlp terminó pero no se encontró el archivo descargado.");
+    } catch (error) {
+      lastError = error;
+      console.error(`YT-DLP falló con formato "${format}":`, error.message || error);
+    }
   }
 
-  return candidates[0].fullPath;
+  throw new Error(`No se pudo descargar el video. ${lastError?.message || ""}`);
 }
-
 function makeMetadata(index, start, end, sourceTitle) {
   const title = `${sourceTitle} · Clip ${index + 1}`;
   const description = `Momento seleccionado automáticamente desde ${Math.floor(start)}s hasta ${Math.floor(end)}s.`;
@@ -237,6 +244,7 @@ app.post("/auto-clips", async (req, res) => {
     res.json({
       ok: true,
       clips,
+      outputs: clips,
       count: clips.length
     });
   } catch (error) {
