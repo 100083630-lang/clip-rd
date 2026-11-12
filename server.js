@@ -21,7 +21,7 @@ for (const dir of [clipsDir, thumbsDir, downloadsDir]) {
 }
 
 app.use(cors({
-  origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+  origin: ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "*"],
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type"]
 }));
@@ -299,6 +299,61 @@ app.post("/live/stop", async (req, res) => {
     res.status(500).json({
       ok: false,
       error: error.message || "No se pudieron generar los clips del Live Radar."
+    });
+  }
+});
+
+// NUEVO ENDPOINT PARA EL EDITOR
+app.post("/export", async (req, res) => {
+  try {
+    const { sourceUrl, start = 0, end, cropX = 50, title = "clip-editado" } = req.body || {};
+    if (!sourceUrl) throw new Error("sourceUrl requerido");
+
+    const sourcePath = await resolveSource(sourceUrl);
+    const duration = end ? Math.max(0.5, end - start) : 15;
+
+    const id = randomUUID().slice(0, 8);
+    const clipName = `${sanitizeName(title)}-edit-${id}`;
+    const fileName = `${clipName}.mp4`;
+    const outputPath = path.join(clipsDir, fileName);
+
+    // Crop simple basado en cropX (0-100)
+    const cropPercent = Number(cropX) / 100;
+    const cropFilter = `crop=iw*0.9:ih:iw*${cropPercent * 0.1}:0`;
+
+    await run("ffmpeg", [
+      "-y",
+      "-ss", String(start),
+      "-i", sourcePath,
+      "-t", String(duration),
+      "-vf", `scale=1080:1920:force_original_aspect_ratio=increase,${cropFilter},crop=1080:1920`,
+      "-c:v", "libx264",
+      "-preset", "fast",
+      "-crf", "18",
+      "-c:a", "aac",
+      "-b:a", "192k",
+      "-movflags", "+faststart",
+      outputPath
+    ]);
+
+    const clipDuration = await getDuration(outputPath);
+    const thumbnails = await createThumbnails(outputPath, clipName, clipDuration);
+
+    res.json({
+      ok: true,
+      clip: {
+        id: clipName,
+        url: `http://127.0.0.1:${PORT}/clips/${encodeURIComponent(fileName)}`,
+        title: title + " (editado)",
+        thumbnails,
+        coverUrl: thumbnails[1] || thumbnails[0]
+      }
+    });
+  } catch (error) {
+    console.error("EXPORT ERROR:", error);
+    res.status(500).json({
+      ok: false,
+      error: error.message || "Error al exportar"
     });
   }
 });

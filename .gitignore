@@ -3,3 +3,8 @@ node_modules/
 .github_repo
 .env
 .env.*
+clips/
+downloads/
+thumbs/
+.vercel/
+*.log
