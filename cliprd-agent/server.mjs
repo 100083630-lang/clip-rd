@@ -6,24 +6,6 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 
-async function loadDotEnv(){
-  try{
-    const raw=await readFile(new URL("./.env",import.meta.url),"utf8");
-    for(const line of raw.split(/\r?\n/)){
-      const clean=line.trim();
-      if(!clean||clean.startsWith("#"))continue;
-      const i=clean.indexOf("=");
-      if(i<1)continue;
-      const key=clean.slice(0,i).trim(),value=clean.slice(i+1).trim().replace(/^"(.*)"$/,"$1").replace(/^'(.*)'$/,"$1");
-      if(!(key in process.env))process.env[key]=value;
-    }
-  }catch{}
-}
-await loadDotEnv();
-
-const AUTH_EMAIL=String(process.env.EMAIL||"").trim();
-const AUTH_PASSWORD=String(process.env.PASSWORD||"");
-const sessions=new Map();
 const PORT=Number(process.env.PORT||3847);
 const HOST=process.env.HOST||"127.0.0.1";
 const OUT=path.resolve(process.env.CLIPRD_OUTPUT_DIR||path.join(os.homedir(),"CLIPRD-Clips"));
@@ -42,13 +24,7 @@ function run(cmd,args,cwd,timeoutMs=0){
     p.on("close",code=>{if(timer)clearTimeout(timer);code===0?finish(resolve,{out,err}):finish(reject,new Error((err||out||`${cmd} terminó con código ${code}`).slice(-6000)))});
   });
 }
-const allowedOrigins=new Set(["http://localhost:3000","http://127.0.0.1:3000"]);
-const cors=(req)=>{const origin=req?.headers?.origin||"";return{"access-control-allow-origin":allowedOrigins.has(origin)?origin:"http://localhost:3000","vary":"Origin","access-control-allow-methods":"GET,POST,OPTIONS","access-control-allow-headers":"content-type, authorization","access-control-max-age":"86400"}};
-function json(res,code,body,req){res.writeHead(code,{"content-type":"application/json; charset=utf-8",...cors(req)});res.end(JSON.stringify(body))}
-function equalSecret(a,b){const ah=crypto.createHash("sha256").update(String(a)).digest(),bh=crypto.createHash("sha256").update(String(b)).digest();return crypto.timingSafeEqual(ah,bh)}
-function bearer(req){const h=String(req.headers.authorization||"");return h.startsWith("Bearer ")?h.slice(7):""}
-function isAuthenticated(req){const token=bearer(req),expires=sessions.get(token);if(!expires)return false;if(expires<Date.now()){sessions.delete(token);return false}return true}
-function createSession(){const token=crypto.randomBytes(32).toString("base64url");const expires=Date.now()+12*60*60*1000;sessions.set(token,expires);return{token,expires}}
+const cors=()=>({'access-control-allow-origin':'*','access-control-allow-methods':'GET,POST,OPTIONS','access-control-allow-headers':'content-type','access-control-max-age':'86400'});
 
 
 async function body(req){let raw="";for await(const c of req){raw+=c;if(raw.length>2_000_000)throw new Error("Solicitud demasiado grande")}return raw?JSON.parse(raw):{}}
@@ -245,23 +221,8 @@ async function startLive(sourceUrl,clipLength,maxClips){
 function liveStatus(){return{active:live.active,sourceUrl:live.sourceUrl,startedAt:live.startedAt,outputs:live.outputs,events:live.events,lastError:live.lastError,processedSegments:live.processed.size}}
 
 const server=http.createServer(async(req,res)=>{try{
-  if(req.method==="OPTIONS"){res.writeHead(204,cors(req));return res.end()}
+  if(req.method==="OPTIONS"){res.writeHead(204,cors());return res.end()}
   const url=new URL(req.url,`http://${req.headers.host}`);
-  if(req.method==="POST"&&url.pathname==="/auth/login"){
-    const b=await body(req),email=String(b.email||"").trim(),password=String(b.password||"");
-    if(!AUTH_EMAIL||!AUTH_PASSWORD)return json(res,503,{ok:false,error:"Configura EMAIL y PASSWORD en cliprd-agent/.env"},req);
-    if(!equalSecret(email,AUTH_EMAIL)||!equalSecret(password,AUTH_PASSWORD))return json(res,401,{ok:false,error:"Acceso denegado"},req);
-    const session=createSession();return json(res,200,{ok:true,...session},req);
-  }
-  if(req.method==="GET"&&url.pathname==="/auth/session"){
-    if(!isAuthenticated(req))return json(res,401,{ok:false,error:"Acceso denegado"},req);
-    return json(res,200,{ok:true},req);
-  }
-  if(req.method==="POST"&&url.pathname==="/auth/logout"){
-    const token=bearer(req);if(token)sessions.delete(token);return json(res,200,{ok:true},req);
-  }
-  const publicPath=url.pathname==="/health"||url.pathname.startsWith("/files/");
-  if(!publicPath&&!isAuthenticated(req))return json(res,401,{ok:false,error:"Acceso denegado"},req);
   if(req.method==="GET"&&url.pathname==="/health"){return json(res,200,{ok:true,service:"CLIPRD Local Agent",version:"2.2.1",outputDir:OUT,features:{autoClips:"audio-activity",liveMonitor:"rolling-segments"}})}
   if(req.method==="POST"&&url.pathname==="/render"){const b=await body(req);const result=await processJob(safeUrl(b.sourceUrl),safeClips(b.clips));const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t)}));return json(res,200,result)}
   if(req.method==="POST"&&url.pathname==="/auto-clips"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(8,Number(b.maxClips)||4));const result=await autoProcess(safeUrl(b.sourceUrl),len,max);const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file,coverUrl:origin+x.cover,thumbnails:(x.thumbnails||[]).map(t=>origin+t)}));return json(res,200,result)}
