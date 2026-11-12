@@ -142,7 +142,20 @@ function clearLibrary(){if(confirm('¿Eliminar los clips guardados localmente?')
 async function checkEngine(){const status=$('engineStatus'),info=$('engineInfo'),dot=$('dot');if(!status||!info||!dot)return;status.textContent='Comprobando motor…';try{const r=await Promise.race([fetch(AGENT+'/health?ts='+Date.now(),{cache:'no-store'}),new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')),2500))]);const x=await r.json();if(!r.ok||!x.ok)throw Error('Motor no listo');status.textContent='Motor local conectado';dot.classList.add('on');info.textContent='ONLINE · listo para crear clips'}catch(e){status.textContent='Motor local desconectado';dot.classList.remove('on');info.textContent='Abre el agente y ejecuta npm start'}}
 async function createClips(){const url=$('sourceUrl').value.trim(),len=+$('clipLength').value,max=+$('maxClips').value,folder=$('jobFolder').value.trim(),st=$('jobStatus');if(!/^https?:\/\//i.test(url)){st.textContent='❌ Introduce una URL válida.';return}st.textContent='⏳ Enviando trabajo al motor local…';try{let r=await fetch(AGENT+'/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});if(r.status===404)r=await fetch(AGENT+'/api/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});let x={};try{x=await r.json()}catch{}if(!r.ok)throw Error(x.error||'El motor respondió HTTP '+r.status);const now=Date.now(),sourceTitle=(url.split('/').pop()||'Contenido original').replace(/[-_]/g,' '),items=(x.outputs||x.clips||[]).map((o,i)=>{const start=Number(o.start)||0,end=Number(o.end)||0,copy=autoCopy({...o,start,end},sourceTitle);const thumbs=Array.isArray(o.thumbnails)?o.thumbnails.filter(Boolean).slice(0,3):[];const cover=o.coverUrl||o.cover||thumbs[0]||makeFallbackCover(copy.title);return ensureClipMeta({name:o.title||copy.title||('Clip '+(i+1)),title:copy.title,url:o.url,coverUrl:cover,description:copy.description,hashtags:copy.hashtags,clipTranscript:o.clipTranscript||o.transcript||'',thumbnails:thumbs,created:o.created||now+i,start,end,folder:folder||undefined,viralScore:o.viralScore||o.score})});if(!items.length)throw Error('El motor terminó sin devolver clips.');setLib([...items,...getLib()]);st.textContent='✅ '+items.length+' clips listos y guardados en la Biblioteca.';showView('library')}catch(e){st.textContent='❌ '+e.message}}
 function youtubeId(url){try{const u=new URL(url);if(u.hostname.includes('youtu.be'))return u.pathname.split('/').filter(Boolean)[0];if(u.searchParams.get('v'))return u.searchParams.get('v');const p=u.pathname.match(/\/(live|embed|shorts)\/([^/?]+)/);return p?p[2]:null}catch{return null}}
-function openLive(){const id=youtubeId($('liveUrl').value.trim());if(!id){$('liveStatus').textContent='❌ URL de YouTube inválida.';return false}$('liveFrame').src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?autoplay=1&mute=1';return true}
+function openLive(){
+  const id=youtubeId($('liveUrl').value.trim());
+  if(!id){$('liveStatus').textContent='❌ URL de YouTube inválida.';return false}
+  const frame=$('liveFrame');
+  // YouTube Error 153: el embed necesita un origen/referer identificable.
+  const origin=location.origin&&location.origin!=='null'?location.origin:'http://localhost';
+  const params=new URLSearchParams({
+    autoplay:'1',mute:'1',playsinline:'1',rel:'0',
+    origin:origin,
+    enablejsapi:'1'
+  });
+  frame.src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?'+params.toString();
+  return true
+}
 function getMarks(){try{return JSON.parse(localStorage.getItem('cliprd-live-marks')||'[]')}catch{return[]}}function setMarks(x){localStorage.setItem('cliprd-live-marks',JSON.stringify(x));renderMarks()}
 function renderMarks(){const a=getMarks(),box=$('liveMarks');if(box)box.innerHTML=a.slice(-8).map(x=>'<span class="live-mark">⚡ '+formatTime(x.time)+' '+escapeHtml(x.label||'Momento')+'</span>').join('')}
 function markLiveMoment(){const mark={time:Math.floor((Date.now()-(window.liveStartedAt||Date.now()))/1000),created:Date.now(),label:'Momento marcado'};setMarks([...getMarks(),mark]);$('liveStatus').textContent='⚡ Momento guardado: '+formatTime(mark.time)}
