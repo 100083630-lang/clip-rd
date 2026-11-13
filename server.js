@@ -214,6 +214,7 @@ async function resolveSource(sourceUrl, report = () => {}) {
   // PERFIL EXACTO VALIDADO EN WINDOWS: se intenta primero sin banderas extra
   // que puedan alterar la selección de formatos de YouTube.
   const common = [
+    "--ignore-config",
     "--no-playlist",
     "--newline",
     "--socket-timeout", "30",
@@ -222,13 +223,16 @@ async function resolveSource(sourceUrl, report = () => {}) {
     "--print", "after_move:filepath"
   ];
 
+  // Dos fases: primero formato progresivo 18 (el perfil que ya funciona en esta PC).
+  // Si ese video no publica formato 18, se intenta el mejor stream <=720p del MISMO
+  // cliente. Así no descartamos videos válidos solo porque no tengan ID 18.
   const attempts = isYouTube ? [
-    // Primer intento = equivalente al comando que el usuario comprobó manualmente.
-    { name: "android", format: "18", args: ["--extractor-args", "youtube:player_client=android"] },
-    { name: "ios", format: "18/best[height<=720]", args: ["--extractor-args", "youtube:player_client=ios"] },
-    { name: "tv_embedded", format: "18/best[height<=720]", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
-    { name: "web_safari", format: "18/best[height<=720]", args: ["--extractor-args", "youtube:player_client=web_safari"] }
-  ] : [{ name: "auto", format: "best[height<=720]/best", args: [] }];
+    { name: "android-18", client: "android", format: "18", args: ["--extractor-args", "youtube:player_client=android"] },
+    { name: "android-best720", client: "android", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android"] },
+    { name: "ios-best720", client: "ios", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=ios"] },
+    { name: "tv_embedded-best720", client: "tv_embedded", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
+    { name: "web_safari-best720", client: "web_safari", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=web_safari"] }
+  ] : [{ name: "auto", client: "auto", format: "best[height<=720]/best", args: [] }];
   const errors = [];
 
   for (let index = 0; index < attempts.length; index++) {
