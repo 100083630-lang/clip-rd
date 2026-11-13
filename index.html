@@ -142,6 +142,183 @@ body{background:radial-gradient(900px 520px at 40% -10%,rgba(124,92,255,.16),tra
 @media(max-width:1200px){#home .hero{grid-template-columns:1fr}.hero-panel{grid-template-columns:1fr 1fr}.shell{grid-template-columns:220px minmax(0,1fr)}}
 @media(max-width:850px){.app{padding:8px}.shell{grid-template-columns:1fr}.sidebar{position:relative;top:auto;height:auto}.top{position:relative}.hero-panel{grid-template-columns:1fr}.statgrid{grid-template-columns:repeat(2,1fr)}#home>.section-grid{grid-template-columns:1fr}}
 
+
+
+/* =========================================================
+   CLIPRD COMMAND CENTER — PRODUCT UI REDESIGN (VISUAL ONLY)
+   Theme: Graphite / Ice / Signal Lime
+   ========================================================= */
+:root{
+  --bg0:#080a0f;
+  --bg1:#0d1118;
+  --panel:#11161f;
+  --panel-2:#151b25;
+  --line:rgba(255,255,255,.085);
+  --text:#f4f7fa;
+  --muted:#8d98a8;
+  --ice:#8fd8ff;
+  --signal:#c7ff4f;
+  --signal-2:#98e83b;
+  --ink:#05070a;
+}
+body{
+  background:
+    radial-gradient(900px 560px at 100% -10%,rgba(143,216,255,.08),transparent 55%),
+    radial-gradient(700px 560px at -15% 100%,rgba(199,255,79,.045),transparent 60%),
+    var(--bg0)!important;
+}
+body:before{display:none}
+.app{max-width:1900px;padding:16px 18px}
+.shell{grid-template-columns:238px minmax(0,1fr);gap:18px}
+.sidebar{
+  border-radius:18px!important;
+  background:linear-gradient(180deg,#11161f 0%,#0b0f15 100%)!important;
+  border-color:var(--line)!important;
+  box-shadow:0 24px 70px rgba(0,0,0,.28)!important;
+}
+.brand{font-size:25px!important;letter-spacing:-1.7px}
+.brand span{color:var(--signal)!important}
+.brand:after{display:none!important}
+.navbtn.active{
+  color:#11140b!important;
+  background:linear-gradient(135deg,#d8ff6b,#a8ef3d)!important;
+  box-shadow:0 12px 30px rgba(199,255,79,.14)!important;
+}
+.navbtn:hover{background:rgba(255,255,255,.055)!important}
+.navbtn.active:hover{background:linear-gradient(135deg,#d8ff6b,#a8ef3d)!important}
+.sidebar-footer{background:rgba(143,216,255,.05)!important;border-color:rgba(143,216,255,.12)!important}
+
+.top{
+  height:58px;padding:0 0 12px!important;
+  background:linear-gradient(180deg,rgba(8,10,15,.96),rgba(8,10,15,.74),transparent)!important;
+}
+.search{
+  height:48px!important;max-width:620px!important;border-radius:12px!important;
+  background:#0d121a!important;border-color:var(--line)!important;
+}
+.engine{
+  height:48px!important;border-radius:12px!important;background:#0d121a!important;
+  border:1px solid var(--line)!important;color:#b8c1cd!important;
+}
+.dot.on{background:var(--signal)!important;box-shadow:0 0 16px var(--signal)!important}
+
+.commandbar{
+  min-height:56px;margin:2px 0 18px;padding:0 18px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  border:1px solid var(--line);border-radius:14px;
+  background:linear-gradient(90deg,rgba(143,216,255,.055),rgba(255,255,255,.015));
+}
+.commandbar-copy{display:flex;align-items:center;gap:13px;color:#cbd3dd;font-size:13px}
+.command-kicker{color:var(--signal);font-size:10px;font-weight:1000;letter-spacing:1.8px}
+.command-live{display:flex;align-items:center;gap:8px;color:#d9e0e8;font-size:10px;font-weight:900;letter-spacing:1px}
+.command-live i{width:8px;height:8px;border-radius:50%;background:var(--signal);box-shadow:0 0 16px var(--signal)}
+.command-live small{color:var(--muted);font-weight:600;letter-spacing:0}
+
+#home .cliprd-hero{
+  display:grid!important;grid-template-columns:minmax(0,1.25fr) minmax(430px,.82fr)!important;
+  min-height:620px!important;gap:18px!important;margin:0!important;padding:0!important;
+}
+.cliprd-intro{
+  min-height:620px!important;padding:52px!important;border-radius:22px!important;
+  display:flex!important;justify-content:center!important;
+  background:
+    linear-gradient(145deg,rgba(18,23,31,.96),rgba(10,13,19,.96))!important;
+  border:1px solid var(--line)!important;
+  box-shadow:0 30px 80px rgba(0,0,0,.22)!important;
+}
+.cliprd-intro:after{
+  width:480px!important;height:480px!important;right:-250px!important;top:-150px!important;
+  background:radial-gradient(circle,rgba(143,216,255,.13),transparent 67%)!important;
+}
+.cliprd-intro .eyebrow{color:var(--signal)!important;font-size:11px!important;letter-spacing:2.4px!important}
+.cliprd-intro h1{
+  max-width:760px!important;font-size:clamp(54px,6.2vw,96px)!important;
+  line-height:.88!important;letter-spacing:-5px!important;margin:15px 0 22px!important;
+  color:#f4f7fa!important;background:none!important;-webkit-text-fill-color:initial!important;
+}
+.cliprd-intro h1 b{
+  color:var(--ice)!important;background:none!important;-webkit-text-fill-color:initial!important;
+}
+.cliprd-intro .lead{max-width:680px!important;color:#9ca8b8!important;font-size:17px!important}
+.primary-action{
+  background:linear-gradient(135deg,var(--signal),#a8eb45)!important;color:#101407!important;
+  box-shadow:0 18px 42px rgba(199,255,79,.14)!important;
+}
+.primary-action span{font-size:18px}
+.ghost-action{background:#111721!important}
+.workflow-strip{
+  margin-top:42px;padding-top:24px;border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:13px;color:#b4beca;
+}
+.workflow-strip div{display:flex;align-items:center;gap:9px;font-size:12px}
+.workflow-strip b{color:var(--signal);font-size:11px}.workflow-strip i{height:1px;width:38px;background:var(--line)}
+
+.command-center{
+  display:flex!important;flex-direction:column!important;padding:20px!important;
+  border-radius:22px!important;background:linear-gradient(180deg,#111720,#0d1219)!important;
+  border-color:var(--line)!important;box-shadow:0 30px 80px rgba(0,0,0,.22)!important;
+}
+.center-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:17px}
+.center-head h3{margin:4px 0 0;font-size:21px;letter-spacing:-.6px}
+.center-head .eyebrow{color:var(--ice)!important}
+.icon-refresh{
+  width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:#0b1017;color:var(--ice);cursor:pointer;font-size:18px;
+}
+.command-center .statgrid{grid-template-columns:1fr 1fr!important;gap:10px!important}
+.command-center .stat{
+  min-height:104px;padding:14px!important;border-radius:14px!important;background:#0b1017!important;border-color:rgba(255,255,255,.055)!important;
+}
+.stat-icon{display:block;color:var(--ice);font-size:14px;margin-bottom:8px}
+.command-center .stat b{font-size:30px!important;color:#f5f7fa!important;background:none!important;-webkit-text-fill-color:initial!important}
+.last-project{
+  margin-top:10px;padding:15px;border-radius:14px;border:1px solid var(--line);
+  background:linear-gradient(135deg,rgba(143,216,255,.055),rgba(255,255,255,.018));
+}
+.last-project .eyebrow{color:#8fd8ff!important;display:block;margin-bottom:7px}
+.last-project b{display:block;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+
+.action-dock{grid-template-columns:repeat(4,1fr)!important;gap:8px!important;margin-top:10px}
+.action-dock button{
+  min-height:86px;padding:10px!important;border-radius:14px!important;background:#0b1017!important;
+  border:1px solid rgba(255,255,255,.06)!important;text-align:left!important;
+}
+.action-dock button:hover{transform:translateY(-3px)!important;border-color:rgba(143,216,255,.38)!important}
+.action-dock button>span{display:block;color:var(--signal);font-size:16px;margin-bottom:8px}
+.action-dock button b{display:block;font-size:11px}.action-dock button small{color:var(--muted);font-size:9px}
+
+.engine-card{
+  margin-top:auto;padding-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.engine-card>div{display:grid;grid-template-columns:8px auto;column-gap:9px;align-items:center}
+.engine-card span{font-size:12px;font-weight:800}.engine-card small{grid-column:2;color:var(--muted);font-size:9px;margin-top:3px}
+.engine-pulse{width:8px;height:8px;border-radius:50%;background:var(--signal);box-shadow:0 0 15px var(--signal)}
+.engine-card button{
+  border:1px solid rgba(143,216,255,.2);background:rgba(143,216,255,.06);color:var(--ice);
+  padding:9px 11px;border-radius:10px;font-size:10px;font-weight:900;cursor:pointer;
+}
+
+.card,.clip{border-color:var(--line)!important}
+.btn{border-radius:11px!important}
+.quick button,.toolbar input,.toolbar select,input,textarea,select{border-color:var(--line)!important}
+.play{background:linear-gradient(135deg,var(--signal),var(--ice))!important;color:#071015!important}
+.folder,.chip{color:var(--ice)!important;background:rgba(143,216,255,.07)!important;border-color:rgba(143,216,255,.15)!important}
+.folders button.active,.platform-tabs button.active{background:var(--signal)!important;color:#101407!important;border-color:var(--signal)!important}
+.live-icon{background:linear-gradient(135deg,var(--signal),var(--ice))!important;color:#091018!important}
+.live-radar-view h2{background:none!important;color:#f4f7fa!important;-webkit-text-fill-color:initial!important}
+
+@media(max-width:1200px){
+  #home .cliprd-hero{grid-template-columns:1fr!important}
+  .cliprd-intro{min-height:500px!important}
+}
+@media(max-width:720px){
+  .commandbar{align-items:flex-start;flex-direction:column;padding:13px}
+  .command-live{width:100%;justify-content:flex-start}
+  .cliprd-intro{padding:30px 24px!important;min-height:540px!important}
+  .cliprd-intro h1{font-size:56px!important;letter-spacing:-3px!important}
+  .workflow-strip{gap:7px}.workflow-strip i{width:15px}
+  .action-dock{grid-template-columns:1fr 1fr!important}
+}
+
 </style>
 </head>
 <body><main class="app"><div class="shell">
@@ -162,8 +339,59 @@ body{background:radial-gradient(900px 520px at 40% -10%,rgba(124,92,255,.16),tra
 <header class="top"><input id="globalSearch" class="search" placeholder="Buscar clips, títulos, ideas o descripciones…" oninput="filterLibrary()"><div class="engine"><i class="dot" id="dot"></i><span id="engineStatus">Comprobando motor…</span></div></header>
 
 <section id="home" class="view active">
-<div class="hero"><div class="hero-copy"><div class="eyebrow">CLIPRD CREATOR STUDIO</div><h1>CREA.<br><b>DESTACA.</b><br>PUBLICA.</h1><p class="lead">Tu espacio de trabajo para convertir contenido en clips. Organiza cada corte desde el inicio del video, míralo antes de descargarlo, prepara la descripción y deja todo listo para publicar.</p><div class="row"><button class="btn" onclick="showView('studio')">🎬 Crear clips</button><button class="btn alt" onclick="showView('library')">▣ Ver mi contenido</button></div></div>
-<div class="hero-panel"><div class="card"><div class="eyebrow">TU ESTUDIO</div><div class="statgrid"><div class="stat"><b id="clipCount">0</b><span class="small">clips guardados</span></div><div class="stat"><b id="folderCount">0</b><span class="small">carpetas</span></div><div class="stat"><b id="todayCount">0</b><span class="small">clips de hoy</span></div><div class="stat"><b id="weekCount">0</b><span class="small">esta semana</span></div><div class="stat wide"><b id="lastClip">—</b><span class="small">último clip generado</span></div></div></div><div class="quick"><button onclick="showView('studio')">✨<br>Nuevo Auto Clip</button><button onclick="showView('live')">🔴<br>Live Radar</button><button onclick="showView('cover')">🖼️<br>Crear portada</button><button onclick="showView('publish')">🚀<br>Preparar publicación</button></div><div class="card"><b>Motor local</b><div class="small" id="engineInfo">http://127.0.0.1:3847</div><button class="btn alt" style="margin-top:10px" onclick="checkEngine()">↻ Revisar conexión</button></div></div></div>
+  <div class="commandbar">
+    <div class="commandbar-copy"><span class="command-kicker">CLIPRD / CREATOR ENGINE</span><span>Una forma distinta de hacer clipping.</span></div>
+    <div class="command-live"><i></i><span>ENGINE ONLINE</span><small>Listo para crear</small></div>
+  </div>
+
+  <div class="hero cliprd-hero">
+    <div class="hero-copy cliprd-intro">
+      <div class="eyebrow">CLIPRD</div>
+      <h1>UNA FORMA<br>DISTINTA DE<br><b>HACER CLIPPING.</b></h1>
+      <p class="lead">Un espacio de trabajo diseñado para encontrar momentos, convertirlos en clips y dejarlos listos para publicar sin perder el ritmo creativo.</p>
+      <div class="row">
+        <button class="btn primary-action" onclick="showView('studio')"><span>✦</span> Empezar a clippear</button>
+        <button class="btn alt ghost-action" onclick="showView('library')">Explorar biblioteca <span>→</span></button>
+      </div>
+      <div class="workflow-strip">
+        <div><b>01</b><span>Encuentra</span></div><i></i>
+        <div><b>02</b><span>Recorta</span></div><i></i>
+        <div><b>03</b><span>Publica</span></div>
+      </div>
+    </div>
+
+    <div class="hero-panel command-center">
+      <div class="center-head">
+        <div><span class="eyebrow">TU ESPACIO</span><h3>Centro de creación</h3></div>
+        <button class="icon-refresh" onclick="checkEngine()" title="Revisar motor">↻</button>
+      </div>
+
+      <div class="statgrid">
+        <div class="stat"><span class="stat-icon">✂</span><b id="clipCount">0</b><span class="small">clips</span></div>
+        <div class="stat"><span class="stat-icon">▣</span><b id="folderCount">0</b><span class="small">carpetas</span></div>
+        <div class="stat"><span class="stat-icon">◷</span><b id="todayCount">0</b><span class="small">hoy</span></div>
+        <div class="stat"><span class="stat-icon">↗</span><b id="weekCount">0</b><span class="small">semana</span></div>
+      </div>
+
+      <div class="last-project">
+        <span class="eyebrow">ÚLTIMO PROYECTO</span>
+        <b id="lastClip">—</b>
+        <span class="small">Continúa donde lo dejaste</span>
+      </div>
+
+      <div class="quick action-dock">
+        <button onclick="showView('studio')"><span>✦</span><b>Auto Clip</b><small>Crear</small></button>
+        <button onclick="showView('live')"><span>◉</span><b>Live Radar</b><small>Detectar</small></button>
+        <button onclick="showView('cover')"><span>▧</span><b>Portada</b><small>Diseñar</small></button>
+        <button onclick="showView('publish')"><span>↗</span><b>Publicar</b><small>Preparar</small></button>
+      </div>
+
+      <div class="engine-card">
+        <div><i class="engine-pulse"></i><span>Motor local</span><small id="engineInfo">http://127.0.0.1:3847</small></div>
+        <button onclick="checkEngine()">Diagnóstico</button>
+      </div>
+    </div>
+  </div>
 </section>
 <section class="section-grid" style="margin:0 0 22px">
 <div class="card"><div class="eyebrow">ANALÍTICAS DEL CREADOR</div><h3>Clips por día · esta semana</h3><div class="bars" id="weeklyBars"></div><div class="small" id="weekCompare"></div></div>
