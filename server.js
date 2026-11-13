@@ -194,7 +194,7 @@ function runYtDlp(args, { timeoutMs = 60000, onProgress = () => {} } = {}) {
   });
 }
 
-async function resolveSource(sourceUrl, report = () => {}) {
+async function resolveSource(sourceUrl, report = () => {}, options = {}) {
   if (!sourceUrl) throw new Error("sourceUrl es obligatorio.");
 
   if (!isHttpUrl(sourceUrl)) {
@@ -219,6 +219,7 @@ async function resolveSource(sourceUrl, report = () => {}) {
     "--newline",
     "--socket-timeout", "30",
     "--no-cache-dir",
+    ...(options.live ? ["--live-from-start"] : []),
     "-o", outputTemplate,
     "--print", "after_move:filepath"
   ];
@@ -231,6 +232,7 @@ async function resolveSource(sourceUrl, report = () => {}) {
     { name: "android-best720", client: "android", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android"] },
     { name: "ios-best720", client: "ios", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=ios"] },
     { name: "tv_embedded-best720", client: "tv_embedded", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
+    { name: "youtube-default", client: "default", format: "best[height<=720]/best", args: [] },
     { name: "web_safari-best720", client: "web_safari", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=web_safari"] }
   ] : [{ name: "auto", client: "auto", format: "best[height<=720]/best", args: [] }];
   const errors = [];
@@ -340,8 +342,8 @@ async function createThumbnails(clipPath, clipName, duration) {
   }
   return thumbnails;
 }
-async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3 }, report = () => {}) {
-  const sourcePath = await resolveSource(sourceUrl, report);
+async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3, liveMode = false }, report = () => {}) {
+  const sourcePath = await resolveSource(sourceUrl, report, { live: liveMode });
   report({ status: "analyzing", phase: "Analizando video", message: "Leyendo duración y preparando cortes…", progress: 50 });
   const sourceDuration = await getDuration(sourcePath);
 
@@ -406,6 +408,23 @@ const healthPayload = () => ({ ok: true, status: "online", engine: "cliprd", por
 app.get("/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/diagnostics", async (_req, res) => { try { const tools = await assertLocalTools(); res.json({ ...healthPayload(), tools }); } catch (error) { res.status(500).json({ ok:false, status:"degraded", error:error.message || String(error) }); } });
+
+app.post("/clips/delete", (req, res) => {
+  try {
+    const candidate = String(req.body?.id || req.body?.filename || req.body?.url || "");
+    const raw = candidate.includes("/") ? decodeURIComponent(candidate.split("/").pop().split("?")[0]) : decodeURIComponent(candidate);
+    const stem = path.basename(raw).replace(/\.(mp4|webm|mkv|mov)$/i, "");
+    const files = fs.readdirSync(clipsDir).filter(name => path.parse(name).name === stem || name === raw || path.parse(name).name.endsWith("-" + stem));
+    if (!files.length) return res.status(404).json({ ok:false, error:"Clip no encontrado en el disco local.", requested: raw });
+    const deleted=[];
+    for (const name of files) {
+      fs.rmSync(path.join(clipsDir,name),{force:true}); deleted.push(name);
+      const clipStem=path.parse(name).name;
+      for(const thumb of fs.readdirSync(thumbsDir)) if(thumb.startsWith(clipStem+"-")) fs.rmSync(path.join(thumbsDir,thumb),{force:true});
+    }
+    res.json({ok:true,deleted});
+  } catch(error) { res.status(500).json({ok:false,error:error.message||String(error)}); }
+});
 
 app.delete("/clips/:id", (req, res) => {
   try {
@@ -495,7 +514,7 @@ app.post("/live/stop", async (req, res) => {
 
     let clips = [];
     if (sourceUrl) {
-      clips = await buildClips({ sourceUrl, clipLength, maxClips });
+      clips = await buildClips({ sourceUrl, clipLength, maxClips, liveMode: true });
     }
 
     liveState.running = false;
