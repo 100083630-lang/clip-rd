@@ -1,1 +1,1 @@
-// CLIPRD local engine entrypoint\n// Run with: node server.mjs\nimport "./server.js";\n
+import './server.js';
