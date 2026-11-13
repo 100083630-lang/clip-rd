@@ -646,13 +646,14 @@ app.post("/live/start", async (req, res) => {
   const sourceUrl = String(req.body?.sourceUrl || "").trim();
   const localPathInput = String(req.body?.localPath || "").trim();
   if (!sourceUrl && !localPathInput) {
-    return res.status(400).json({ ok:false, error:"Pega una URL del LIVE o indica un archivo local." });
+    return res.status(400).json({ ok:false, error:"Pega una URL o indica un archivo local." });
   }
   if (liveState.running) return res.status(409).json({ ok:false, error:"Ya hay un Live Radar activo." });
 
+  // Validamos herramientas, pero NO abrimos un segundo pipeline de descarga.
+  // Live Radar debe reutilizar exactamente el downloader que ya funciona en Auto Clips.
   try {
-    // ffmpeg/ffprobe siempre son necesarios para analizar y recortar.
-    await Promise.all([run("ffmpeg", ["-version"]), run("ffprobe", ["-version"])]);
+    await assertLocalTools();
   } catch (error) {
     return res.status(500).json({ ok:false, error:error.message });
   }
@@ -665,45 +666,36 @@ app.post("/live/start", async (req, res) => {
     generatedClips:[],
     jobId:null,
     lastError:null,
-    captureError:null
+    captureProcess:null,
+    captureError:null,
+    captureStatus:localPathInput ? "ready" : "armed",
+    captureMessage:localPathInput
+      ? "Fuente local lista para análisis automático."
+      : "Live Radar armado. Al detener, usará el mismo motor de descarga de Auto Clips.",
+    capturePath:null,
+    captureDir:null,
+    bytesCaptured:0
   });
 
   if (localPathInput) {
     try {
-      const file = prepareLocalLiveSource(localPathInput);
-      Object.assign(liveState, {
-        sessionId:randomUUID().slice(0,10),
-        captureDir:path.dirname(file),
-        capturePath:file,
-        captureProcess:null,
-        captureStatus:"ready",
-        captureMessage:"Fuente local lista. CLIPRD puede analizarla y generar cortes automáticos.",
-        bytesCaptured:fs.statSync(file).size,
-        captureStartedAt:new Date().toISOString(),
-        captureStoppedAt:null,
-        captureAttempt:0
-      });
-      return res.status(202).json({
-        ok:true,running:true,active:true,mode:"local",startedAt:liveState.startedAt,
-        captureStatus:liveState.captureStatus,message:liveState.captureMessage
-      });
+      const file=prepareLocalLiveSource(localPathInput);
+      liveState.capturePath=file;
+      liveState.captureDir=path.dirname(file);
+      liveState.bytesCaptured=fs.statSync(file).size;
     } catch (error) {
       liveState.running=false;
       return res.status(400).json({ ok:false,error:error.message });
     }
   }
 
-  try {
-    await run("yt-dlp", ["--version"]);
-    startLiveCapture(sourceUrl);
-    return res.status(202).json({
-      ok:true,running:true,active:true,mode:"live",startedAt:liveState.startedAt,sourceUrl,
-      captureStatus:liveState.captureStatus,message:liveState.captureMessage
-    });
-  } catch (error) {
-    liveState.running=false;
-    return res.status(500).json({ ok:false,error:error.message });
-  }
+  res.status(202).json({
+    ok:true,running:true,active:true,
+    mode:localPathInput?"local":"auto-downloader",
+    startedAt:liveState.startedAt,
+    captureStatus:liveState.captureStatus,
+    message:liveState.captureMessage
+  });
 });
 
 app.get("/live/status", (_req, res) => {
@@ -729,27 +721,68 @@ app.get("/live/status", (_req, res) => {
 });
 
 app.post("/live/stop", (req, res) => {
+  const sourceUrl = String(req.body?.sourceUrl || liveState.sourceUrl || "").trim();
   const clipLength = req.body?.clipLength || 45;
-  const maxClips = req.body?.maxClips || 3;
-  const job = createJob();
-  const report = jobReporter(job);
-  liveState.jobId = job.id;
-  liveState.lastError = null;
+  const maxClips = req.body?.maxClips || Math.max(1, (liveState.markedMoments || []).length || 3);
+  const localSource = liveState.capturePath && fs.existsSync(liveState.capturePath) ? liveState.capturePath : null;
 
-  res.status(202).json({ ok:true, jobId:job.id, status:job.status });
+  if (!sourceUrl && !localSource) {
+    return res.status(400).json({ ok:false, error:"No hay una fuente para procesar." });
+  }
 
-  (async () => {
-    try {
-      report({ status:"capturing", phase:"Cerrando Live Buffer", message:"Finalizando la captura local…", progress:8 });
-      const sourcePath = await stopLiveCapture();
-      report({ status:"analyzing", phase:"Analizando Live Buffer", message:"Buscando automáticamente los momentos con mayor potencial…", progress:45 });
-      const clips = await buildClips({ sourcePath, sourceUrl:liveState.sourceUrl, clipLength, maxClips, liveMode:false }, report);
-      liveState.generatedClips = clips;
-      report({ status:"completed", phase:"Live Radar completado", message:`${clips.length} cortes automáticos listos en Biblioteca.`, progress:100, clips });
-    } catch (error) {
-      console.error("LIVE STOP ERROR:", error);
-      liveState.lastError = error.message || String(error);
-      report({ status:"error", phase:"Live Radar detenido", message:liveState.lastError, error:liveState.lastError, progress:100 });
+  const job=createJob();
+  const report=jobReporter(job);
+  liveState.jobId=job.id;
+  liveState.running=false;
+  liveState.lastError=null;
+  liveState.captureStatus="processing";
+  liveState.captureMessage="Preparando fuente con el motor probado de Auto Clips…";
+
+  res.status(202).json({ok:true,jobId:job.id,status:job.status});
+
+  (async()=>{
+    try{
+      report({
+        status:"downloading",
+        phase:"Live Radar · preparando fuente",
+        message:localSource
+          ?"Analizando la fuente local…"
+          :"Usando el mismo pipeline de descarga de Auto Clips…",
+        progress:5
+      });
+
+      // IMPORTANTE: liveMode:false. Este es el pipeline VOD/Auto Clips que
+      // ya ha demostrado descargar enlaces que el pipeline LIVE nuevo rompió.
+      const clips=await buildClips({
+        sourceUrl:sourceUrl || null,
+        sourcePath:localSource,
+        clipLength,
+        maxClips,
+        liveMode:false
+      },report);
+
+      liveState.generatedClips=clips;
+      liveState.captureStatus="completed";
+      liveState.captureMessage=`${clips.length} cortes listos.`;
+      report({
+        status:"completed",
+        phase:"Live Radar completado",
+        message:`${clips.length} cortes automáticos listos en Biblioteca.`,
+        progress:100,
+        clips
+      });
+    }catch(error){
+      console.error("LIVE STOP ERROR:",error);
+      liveState.lastError=error.message||String(error);
+      liveState.captureStatus="error";
+      liveState.captureMessage=liveState.lastError;
+      report({
+        status:"error",
+        phase:"Live Radar detenido",
+        message:liveState.lastError,
+        error:liveState.lastError,
+        progress:100
+      });
     }
   })();
 });
