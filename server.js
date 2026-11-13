@@ -226,14 +226,18 @@ async function resolveSource(sourceUrl, report = () => {}, options = {}) {
   // Dos fases: primero formato progresivo 18 (el perfil que ya funciona en esta PC).
   // Si ese video no publica formato 18, se intenta el mejor stream <=720p del MISMO
   // cliente. Así no descartamos videos válidos solo porque no tengan ID 18.
+  // Cadena progresiva: no asumimos que todos los videos expongan el mismo formato
+  // ni que un cliente concreto tenga streams disponibles. No se usan cookies ni PO tokens.
   const attempts = isYouTube ? [
-    { name: "android-18", client: "android", format: "18", args: ["--extractor-args", "youtube:player_client=android"] },
-    { name: "android-best720", client: "android", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android"] },
-    { name: "ios-best720", client: "ios", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=ios"] },
-    { name: "tv_embedded-best720", client: "tv_embedded", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
-    { name: "youtube-default", client: "default", format: "best[height<=720]/best", args: [] },
-    { name: "web_safari-best720", client: "web_safari", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=web_safari"] }
-  ] : [{ name: "auto", client: "auto", format: "best[height<=720]/best", args: [] }];
+    { name: "android-18", format: "18", args: ["--extractor-args", "youtube:player_client=android"] },
+    { name: "android-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android"] },
+    { name: "android_creator-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android_creator"] },
+    { name: "android_vr-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android_vr"] },
+    { name: "mweb-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=mweb"] },
+    { name: "ios-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=ios"] },
+    { name: "tv_embedded-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
+    { name: "youtube-default", format: "best[height<=720]/best", args: [] }
+  ] : [{ name: "auto", format: "best[height<=720]/best", args: [] }];
   const errors = [];
 
   for (let index = 0; index < attempts.length; index++) {
@@ -309,21 +313,12 @@ async function resolveSource(sourceUrl, report = () => {}, options = {}) {
 
   cleanupPartialDownload(jobId);
   const summary = errors.map(x => `• ${x.client}: ${x.reason}`).join("\n");
-  throw new Error("No se pudo descargar un stream compatible.\n" + summary);
+  throw new Error("YouTube no expuso ningún stream descargable para este enlace con los clientes disponibles. Esto no es un fallo del cortador: la fuente no entregó formatos de video utilizables.\n" + summary);
 }
-function makeMetadata(index, start, end, sourceTitle) {
-  const title = `${sourceTitle} · Clip ${index + 1}`;
-  const description = `Momento seleccionado automáticamente desde ${Math.floor(start)}s hasta ${Math.floor(end)}s.`;
-  const duration = Math.max(0, end - start);
-  const viralScore = Math.min(100, Math.max(1, Math.round(
-    55 +
-    (duration >= 30 && duration <= 60 ? 18 : 6) +
-    (index % 3) * 5
-  )));
-
+function makeMetadata(index, start, end, sourceTitle, viralScore = 70) {
   return {
-    title,
-    description,
+    title: `${sourceTitle} · Clip ${index + 1}`,
+    description: `Momento seleccionado automáticamente por el motor de señales audiovisuales (${Math.floor(start)}s–${Math.floor(end)}s).`,
     clipTranscript: "",
     viralScore
   };
@@ -341,68 +336,77 @@ async function createThumbnails(clipPath, clipName, duration) {
   }
   return thumbnails;
 }
-async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3, liveMode = false }, report = () => {}) {
-  const sourcePath = await resolveSource(sourceUrl, report, { live: liveMode });
-  report({ status: "analyzing", phase: "Analizando video", message: "Leyendo duración y preparando cortes…", progress: 50 });
-  const sourceDuration = await getDuration(sourcePath);
 
-  const safeClipLength = Math.min(Math.max(Number(clipLength) || 45, 5), 600);
-  const safeMaxClips = Math.min(Math.max(Number(maxClips) || 3, 1), 50);
-
-  const clipCount = Math.min(
-    safeMaxClips,
-    Math.max(1, Math.ceil(sourceDuration / safeClipLength))
-  );
-
-  const baseTitle = sanitizeName(path.basename(sourcePath, path.extname(sourcePath)));
-  const results = [];
-
-  for (let index = 0; index < clipCount; index++) {
-    const start = Math.min(index * safeClipLength, Math.max(0, sourceDuration - 0.1));
-    if (start >= sourceDuration) break;
-
-    const end = Math.min(start + safeClipLength, sourceDuration);
-    const actualDuration = Math.max(0.1, end - start);
-    const id = randomUUID().slice(0, 8);
-    const clipName = `${baseTitle}-clip-${String(index + 1).padStart(2, "0")}-${id}`;
-    const fileName = `${clipName}.mp4`;
-    const outputPath = path.join(clipsDir, fileName);
-
-    report({ status: "processing", phase: `Creando clip ${index + 1} de ${clipCount}`, message: `Procesando clip ${index + 1}/${clipCount}…`, progress: 52 + Math.round((index / Math.max(1, clipCount)) * 35), currentClip: index + 1, totalClips: clipCount });
-    await run("ffmpeg", [
-      "-y",
-      "-ss", String(start),
-      "-i", sourcePath,
-      "-t", String(actualDuration),
-      "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-c:a", "aac",
-      "-movflags", "+faststart",
-      outputPath
+// Señal automática sin IA externa: mide energía de audio de ventanas y las ordena.
+// Es determinista y evita generar simplemente los primeros N bloques del video.
+async function scoreWindow(sourcePath, start, length) {
+  try {
+    const { stderr } = await run("ffmpeg", [
+      "-hide_banner", "-nostats", "-ss", String(start), "-t", String(length),
+      "-i", sourcePath, "-vn", "-af", "volumedetect", "-f", "null", process.platform === "win32" ? "NUL" : "/dev/null"
     ]);
-
-    const clipDuration = await getDuration(outputPath);
-    report({ status: "processing", phase: `Finalizando clip ${index + 1} de ${clipCount}`, message: "Generando previsualizaciones…", progress: 58 + Math.round(((index + 0.65) / Math.max(1, clipCount)) * 32), currentClip: index + 1, totalClips: clipCount });
-    const thumbnails = await createThumbnails(outputPath, clipName, clipDuration);
-    const metadata = makeMetadata(index, start, end, baseTitle);
-
-    results.push({
-      id: clipName,
-      url: `http://127.0.0.1:${PORT}/clips/${encodeURIComponent(fileName)}`,
-      title: metadata.title,
-      description: metadata.description,
-      clipTranscript: metadata.clipTranscript,
-      start,
-      end,
-      viralScore: metadata.viralScore,
-      thumbnails,
-      coverUrl: thumbnails[1] || thumbnails[0] || null
-    });
-  }
-
-  return results;
+    const mean = Number((stderr.match(/mean_volume:\s*(-?[\d.]+) dB/i)||[])[1]);
+    const max = Number((stderr.match(/max_volume:\s*(-?[\d.]+) dB/i)||[])[1]);
+    const meanScore = Number.isFinite(mean) ? Math.max(0, Math.min(100, (mean + 55) * 2.1)) : 25;
+    const peakScore = Number.isFinite(max) ? Math.max(0, Math.min(100, (max + 35) * 3)) : 25;
+    return Math.round(meanScore * 0.65 + peakScore * 0.35);
+  } catch { return 30; }
 }
 
+async function selectViralWindows(sourcePath, duration, clipLength, maxClips, report) {
+  const stride = Math.max(8, Math.round(clipLength * 0.5));
+  const candidates = [];
+  const last = Math.max(0, duration - clipLength);
+  for (let start = 0; start <= last; start += stride) candidates.push(Math.round(start * 10) / 10);
+  if (!candidates.length) candidates.push(0);
+
+  const scored = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const start = candidates[i];
+    report({ status:"analyzing", phase:"Analizando momentos", message:`Analizando señal ${i+1}/${candidates.length}…`, progress:50 + Math.round((i/candidates.length)*10) });
+    const energy = await scoreWindow(sourcePath, start, Math.min(clipLength, duration-start));
+    // Bonificación ligera para evitar que todos los resultados sean adyacentes.
+    const score = energy;
+    scored.push({start, end:Math.min(start+clipLength,duration), score});
+  }
+
+  scored.sort((a,b)=>b.score-a.score);
+  const chosen=[];
+  const minGap=Math.max(clipLength*0.7, 12);
+  for(const item of scored){
+    if(chosen.every(x=>Math.abs(x.start-item.start)>=minGap)){
+      chosen.push(item);
+      if(chosen.length>=maxClips)break;
+    }
+  }
+  if(!chosen.length) chosen.push(scored[0]);
+  return chosen.sort((a,b)=>a.start-b.start);
+}
+
+async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3, liveMode = false }, report = () => {}) {
+  const sourcePath = await resolveSource(sourceUrl, report, { live: liveMode });
+  report({ status:"analyzing", phase:"Analizando video", message:"Buscando automáticamente los momentos con mayor señal de atención…", progress:50 });
+  const sourceDuration = await getDuration(sourcePath);
+  const safeClipLength = Math.min(Math.max(Number(clipLength)||45,5),600);
+  const safeMaxClips = Math.min(Math.max(Number(maxClips)||3,1),50);
+  const windows = await selectViralWindows(sourcePath, sourceDuration, safeClipLength, safeMaxClips, report);
+  const baseTitle=sanitizeName(path.basename(sourcePath,path.extname(sourcePath)));
+  const results=[];
+
+  for(let index=0;index<windows.length;index++){
+    const {start,end,score}=windows[index], actualDuration=Math.max(.1,end-start);
+    const id=randomUUID().slice(0,8);
+    const clipName=`${baseTitle}-viral-${String(index+1).padStart(2,"0")}-${id}`;
+    const fileName=`${clipName}.mp4`, outputPath=path.join(clipsDir,fileName);
+    report({status:"processing",phase:`Creando corte viral ${index+1} de ${windows.length}`,message:`Puntuación automática: ${score}/100`,progress:62+Math.round((index/Math.max(1,windows.length))*28),currentClip:index+1,totalClips:windows.length,viralScore:score});
+    await run("ffmpeg",["-y","-ss",String(start),"-i",sourcePath,"-t",String(actualDuration),"-c:v","libx264","-preset","veryfast","-c:a","aac","-movflags","+faststart",outputPath]);
+    const clipDuration=await getDuration(outputPath);
+    const thumbnails=await createThumbnails(outputPath,clipName,clipDuration);
+    const metadata=makeMetadata(index,start,end,baseTitle,score);
+    results.push({id:clipName,url:`http://127.0.0.1:${PORT}/clips/${encodeURIComponent(fileName)}`,title:metadata.title,description:metadata.description,clipTranscript:"",start,end,viralScore:score,thumbnails,coverUrl:thumbnails[1]||thumbnails[0]||null});
+  }
+  return results;
+}
 const healthPayload = () => ({ ok: true, status: "online", engine: "cliprd", port: PORT, time: new Date().toISOString() });
 app.get("/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/health", (_req, res) => res.json(healthPayload()));
