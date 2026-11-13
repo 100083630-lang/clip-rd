@@ -91,17 +91,41 @@ function findDownloadedFile(jobId) {
     .filter(name => name.startsWith(prefix) && /\.(mp4|mkv|webm|mov|m4v)$/i.test(name))
     .map(name => path.join(downloadsDir, name))
     .filter(file => {
-      try { return fs.existsSync(file) && fs.statSync(file).size > 0; }
+      try { return fs.existsSync(file) && fs.statSync(file).size > 1024; }
       catch { return false; }
     })
     .sort((a, b) => fs.statSync(b).size - fs.statSync(a).size);
   return candidates[0] || null;
 }
 
+function cleanupPartialDownload(jobId) {
+  const prefix = `source-${jobId}.`;
+  for (const name of fs.readdirSync(downloadsDir)) {
+    if (!name.startsWith(prefix)) continue;
+    try { fs.rmSync(path.join(downloadsDir, name), { force: true }); } catch {}
+  }
+}
+
+function shortError(error) {
+  const message = String(error?.message || error || "").replace(/\s+/g, " ").trim();
+  if (/SABR|Only images are available/i.test(message)) return "SABR: este cliente no recibió streams descargables";
+  if (/n challenge|Signature solving failed/i.test(message)) return "challenge de YouTube no resuelto por este cliente";
+  if (/timed out|ETIMEDOUT|ECONNRESET/i.test(message)) return "timeout/conexión inestable";
+  if (/Requested format is not available/i.test(message)) return "no hay un formato compatible para este intento";
+  return message.slice(0, 420);
+}
+
 async function assertLocalTools() {
-  await run("yt-dlp", ["--version"]);
-  await run("ffmpeg", ["-version"]);
-  await run("ffprobe", ["-version"]);
+  const [yt, ffmpeg, ffprobe] = await Promise.all([
+    run("yt-dlp", ["--version"]),
+    run("ffmpeg", ["-version"]),
+    run("ffprobe", ["-version"])
+  ]);
+  return {
+    ytDlp: yt.stdout.trim().split(/\r?\n/)[0] || "ok",
+    ffmpeg: ffmpeg.stdout.trim().split(/\r?\n/)[0] || "ok",
+    ffprobe: ffprobe.stdout.trim().split(/\r?\n/)[0] || "ok"
+  };
 }
 
 async function resolveSource(sourceUrl) {
@@ -119,14 +143,18 @@ async function resolveSource(sourceUrl) {
   const outputTemplate = path.join(downloadsDir, `source-${jobId}.%(ext)s`);
   const cookiesPath = path.join(__dirname, "cookies.txt");
   const hasCookies = fs.existsSync(cookiesPath);
-  const isYouTube = /(^|\\.)youtube\\.com|youtu\\.be/i.test(new URL(sourceUrl).hostname);
+  const hostname = new URL(sourceUrl).hostname.toLowerCase();
+  const isYouTube = hostname === "youtu.be" || hostname.endsWith(".youtu.be") || hostname === "youtube.com" || hostname.endsWith(".youtube.com");
 
+  // Conservador para conexiones lentas: una descarga a la vez, reintentos reales y
+  // sin forzar un formato inexistente antes de saber qué stream entrega YouTube.
   const common = [
     "--no-playlist",
     "--newline",
     "--retries", "5",
     "--fragment-retries", "5",
-    "--socket-timeout", "30",
+    "--file-access-retries", "3",
+    "--socket-timeout", "45",
     "--concurrent-fragments", "1",
     "--merge-output-format", "mp4",
     "--no-part",
@@ -134,51 +162,59 @@ async function resolveSource(sourceUrl) {
     "--print", "after_move:filepath"
   ];
 
+  // web_safari va primero porque fue el cliente que sí produjo un MP4 válido en tus logs.
+  // Los demás son fallbacks independientes; no todos funcionan igual para cada sesión/video.
   const attempts = isYouTube ? [
-    { name: "youtube-web", args: ["--extractor-args", "youtube:player_client=web"] },
+    { name: "youtube-web_safari", args: ["--extractor-args", "youtube:player_client=web_safari"] },
+    { name: "youtube-auto", args: [] },
+    ...(hasCookies ? [{ name: "youtube-web_safari-cookies", cookies: true, args: ["--extractor-args", "youtube:player_client=web_safari"] }] : []),
     ...(hasCookies ? [{ name: "youtube-web-cookies", cookies: true, args: ["--extractor-args", "youtube:player_client=web"] }] : []),
     { name: "youtube-mweb", args: ["--extractor-args", "youtube:player_client=mweb"] },
+    { name: "youtube-tv", args: ["--extractor-args", "youtube:player_client=tv"] },
     { name: "youtube-android", args: ["--extractor-args", "youtube:player_client=android"] },
-    { name: "youtube-ios", args: ["--extractor-args", "youtube:player_client=ios"] },
-    { name: "youtube-auto", args: [] }
-  ] : [
-    { name: "auto", args: [] }
-  ];
+    { name: "youtube-ios", args: ["--extractor-args", "youtube:player_client=ios"] }
+  ] : [{ name: "auto", args: [] }];
 
   const errors = [];
 
   for (const attempt of attempts) {
+    cleanupPartialDownload(jobId);
+
     try {
       const args = [...common, ...attempt.args];
       if (attempt.cookies) args.push("--cookies", cookiesPath);
 
-      console.log(`YT-DLP: intento ${attempt.name}…`);
-      const result = await run("yt-dlp", args.concat(sourceUrl));
-      const printed = (result.stdout || "").trim().split(/\\r?\\n/).filter(Boolean);
+      console.log(`YT-DLP [${jobId}] → ${attempt.name}`);
+      const result = await run("yt-dlp", [...args, sourceUrl]);
+
+      const printed = (result.stdout || "").trim().split(/\r?\n/).filter(Boolean);
       const printedPath = printed.find(line => {
-        try { return fs.existsSync(line) && fs.statSync(line).size > 0; }
+        try { return fs.existsSync(line) && fs.statSync(line).size > 1024; }
         catch { return false; }
       });
-      if (printedPath) return printedPath;
 
-      const found = findDownloadedFile(jobId);
-      if (found) return found;
+      const found = printedPath || findDownloadedFile(jobId);
+      if (found) {
+        console.log(`YT-DLP [${jobId}] ✓ descargado con ${attempt.name}: ${found}`);
+        return found;
+      }
 
       throw new Error("yt-dlp terminó sin producir un archivo de video válido.");
     } catch (error) {
-      const message = error?.message || String(error);
-      errors.push(`${attempt.name}: ${message}`);
-      console.error(`YT-DLP falló en ${attempt.name}:`, message);
+      const reason = shortError(error);
+      errors.push({ client: attempt.name, reason });
+      console.error(`YT-DLP [${jobId}] ✗ ${attempt.name}: ${reason}`);
     }
   }
 
-  const diagnostic = [
-    "No se pudo obtener un stream descargable.",
-    ...errors.slice(-3),
-    "Verifica que yt-dlp esté actualizado y que Node, ffmpeg y ffprobe estén disponibles en PATH."
-  ].join("\\n");
+  cleanupPartialDownload(jobId);
 
-  throw new Error(diagnostic);
+  const summary = errors.map(x => `• ${x.client}: ${x.reason}`).join("\n");
+  throw new Error(
+    "No se pudo obtener un stream descargable para este video.\n" +
+    summary +
+    "\n\nCLIPRD probó fallbacks independientes. Si todos fallan, el video/sesión actual no está entregando un stream compatible a yt-dlp."
+  );
 }
 function makeMetadata(index, start, end, sourceTitle) {
   const title = `${sourceTitle} · Clip ${index + 1}`;
@@ -281,9 +317,10 @@ async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3 }) {
   return results;
 }
 
-const healthPayload = () => ({ ok: true, status: "online", engine: "cliprd", port: PORT });
+const healthPayload = () => ({ ok: true, status: "online", engine: "cliprd", port: PORT, time: new Date().toISOString() });
 app.get("/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/health", (_req, res) => res.json(healthPayload()));
+app.get("/api/diagnostics", async (_req, res) => { try { const tools = await assertLocalTools(); res.json({ ...healthPayload(), tools }); } catch (error) { res.status(500).json({ ok:false, status:"degraded", error:error.message || String(error) }); } });
 
 app.post("/auto-clips", async (req, res) => {
   try {
