@@ -121,6 +121,27 @@ h1 b{background:linear-gradient(135deg,#a78bfa,#38dfff);-webkit-background-clip:
 .notice{background:rgba(10,14,26,.68);border:1px solid rgba(255,255,255,.06);backdrop-filter:blur(14px)}
 @media(max-width:1000px){.shell{grid-template-columns:1fr}.app{padding:12px}}
 
+
+
+/* === CLIPRD PRO DASHBOARD V2: visual-only override === */
+:root{--bg0:#060713;--bg1:#0b0d1d;--surface:#101328;--surface2:#151a33;--line:rgba(255,255,255,.08);--muted:#8991ad;--text:#f5f7ff;--accent:#7c5cff;--accent2:#a78bfa;--cyan:#3ddcff;--ok:#2de0a7}
+body{background:radial-gradient(900px 520px at 40% -10%,rgba(124,92,255,.16),transparent 60%),radial-gradient(650px 500px at 100% 100%,rgba(61,220,255,.07),transparent 60%),var(--bg0)}
+.app{max-width:1900px;padding:14px 18px}.shell{grid-template-columns:246px minmax(0,1fr);gap:18px}
+.sidebar{border-radius:24px;padding:18px 12px;position:sticky;top:14px;height:calc(100vh - 28px);background:linear-gradient(180deg,#12152c,#0a0c19 70%);box-shadow:inset 0 1px rgba(255,255,255,.04),0 20px 60px rgba(0,0,0,.25)}
+.brand{padding:6px 8px 20px;font-size:26px}.brand small{letter-spacing:1.5px;color:#727a98}
+.navbtn{border-radius:13px;margin:3px 0;padding:12px 13px;font-size:14px}.navbtn.active{background:linear-gradient(135deg,#7454f7,#8b5cf6);box-shadow:0 12px 28px rgba(124,92,255,.25)}
+.navlabel{margin:18px 8px 7px}.sidebar-footer{margin:18px 4px 0;border-radius:16px;padding:14px}
+.top{position:sticky;top:0;z-index:20;padding:0 0 14px;background:linear-gradient(180deg,var(--bg0) 70%,transparent);display:flex;gap:12px;align-items:center}.search{height:50px;border-radius:15px;max-width:none;flex:1;background:rgba(16,19,40,.88);font-size:14px}.engine{height:50px;display:flex;align-items:center;white-space:nowrap;padding:0 15px}
+#home .hero{min-height:auto;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(420px,.85fr);gap:18px;align-items:stretch;margin-bottom:18px}
+.hero-copy{padding:38px 34px;border:1px solid var(--line);border-radius:28px;background:linear-gradient(135deg,rgba(19,22,45,.94),rgba(11,13,29,.88));position:relative;overflow:hidden}
+.hero-copy:after{content:"";position:absolute;width:320px;height:320px;border-radius:50%;right:-130px;top:-170px;background:radial-gradient(circle,rgba(124,92,255,.3),transparent 65%);pointer-events:none}
+.hero-copy .eyebrow{margin-bottom:13px}.hero h1{font-size:clamp(46px,5vw,78px);line-height:.94;letter-spacing:-3px;margin:0 0 18px}.hero h1 br{display:none}.hero h1 b{display:inline}.lead{max-width:780px;font-size:16px;line-height:1.65}.hero-panel{display:grid;grid-template-columns:1fr 1fr;gap:12px}.hero-panel>.card:first-child{grid-column:1/-1}.hero-panel>.card:last-child{grid-column:1/-1}.card{border-radius:22px;background:linear-gradient(145deg,rgba(19,23,46,.88),rgba(11,13,28,.88));padding:20px}.statgrid{grid-template-columns:repeat(4,1fr);gap:9px}.stat{padding:14px;border-radius:15px}.stat b{font-size:30px}.stat.wide{grid-column:1/-1;padding:14px}.quick{gap:9px}.quick button{border-radius:15px;padding:14px 10px;font-size:13px}
+#home>.section-grid{grid-template-columns:1fr 1fr;gap:18px}.section-grid .card h3{margin:7px 0 18px}.btn{border-radius:13px}.btn.alt{border-radius:13px}
+.eyebrow{font-size:11px;letter-spacing:1.7px}.view>h2{font-size:36px;letter-spacing:-1px}.grid{gap:16px}.clip{border-radius:20px}.preview{border-radius:15px}
+.notice{border-radius:14px}.live-premium-grid{gap:18px}.live-radar-view h2{font-size:48px}.live-control-card,.live-preview-card{border-radius:24px}
+@media(max-width:1200px){#home .hero{grid-template-columns:1fr}.hero-panel{grid-template-columns:1fr 1fr}.shell{grid-template-columns:220px minmax(0,1fr)}}
+@media(max-width:850px){.app{padding:8px}.shell{grid-template-columns:1fr}.sidebar{position:relative;top:auto;height:auto}.top{position:relative}.hero-panel{grid-template-columns:1fr}.statgrid{grid-template-columns:repeat(2,1fr)}#home>.section-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body><main class="app"><div class="shell">
