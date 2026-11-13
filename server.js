@@ -20,7 +20,7 @@ for (const dir of [clipsDir, thumbsDir, downloadsDir]) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-app.use(cors({ origin: true, methods: ["GET", "POST", "OPTIONS"], allowedHeaders: ["Content-Type"] }));
+app.use(cors({ origin: true, methods: ["GET", "POST", "DELETE", "OPTIONS"], allowedHeaders: ["Content-Type"] }));
 app.use(express.json({ limit: "2mb" }));
 app.use("/clips", express.static(clipsDir));
 app.use("/thumbs", express.static(thumbsDir));
@@ -141,6 +141,58 @@ async function assertLocalTools() {
   };
 }
 
+async function killProcessTree(child) {
+  if (!child?.pid) return;
+  try {
+    if (process.platform === "win32") {
+      await new Promise(resolve => {
+        const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
+        killer.on("close", resolve); killer.on("error", resolve);
+      });
+    } else {
+      child.kill("SIGKILL");
+    }
+  } catch {}
+}
+
+function runYtDlp(args, { timeoutMs = 60000, onProgress = () => {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("yt-dlp", args, { windowsHide: true });
+    let stdout = "", stderr = "", settled = false;
+    let lastActivity = Date.now();
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(watchdog);
+      fn(value);
+    };
+
+    const consume = data => {
+      const text = data.toString();
+      lastActivity = Date.now();
+      const match = text.match(/\[download\]\s+([0-9]+(?:\.[0-9]+)?)%/i);
+      if (match) onProgress(Number(match[1]));
+    };
+
+    child.stdout?.on("data", data => { stdout += data.toString(); consume(data); });
+    child.stderr?.on("data", data => { stderr += data.toString(); consume(data); });
+
+    // Watchdog de 60 s sin ninguna actividad. No mata una descarga lenta que sí sigue
+    // avanzando; mata el cuelgue real del "_" infinito y permite el siguiente cliente.
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastActivity < timeoutMs) return;
+      killProcessTree(child).finally(() => finish(reject, new Error(`yt-dlp sin actividad durante ${Math.round(timeoutMs / 1000)}s`)));
+    }, 1000);
+
+    child.on("error", error => finish(reject, new Error(`yt-dlp no pudo iniciarse: ${error.message}`)));
+    child.on("close", code => {
+      if (code === 0) finish(resolve, { stdout, stderr });
+      else finish(reject, new Error(`yt-dlp terminó con código ${code}. ${stderr || stdout}`));
+    });
+  });
+}
+
 async function resolveSource(sourceUrl, report = () => {}) {
   if (!sourceUrl) throw new Error("sourceUrl es obligatorio.");
 
@@ -150,87 +202,112 @@ async function resolveSource(sourceUrl, report = () => {}) {
     return localPath;
   }
 
-  report({ status: "downloading", phase: "Preparando descarga", message: "Verificando herramientas locales…", progress: 8 });
+  report({ status: "downloading", phase: "Preparando descarga", message: "Verificando herramientas locales…", progress: 5 });
   await assertLocalTools();
 
   const jobId = randomUUID().slice(0, 8);
   const outputTemplate = path.join(downloadsDir, `source-${jobId}.%(ext)s`);
-  const cookiesPath = path.join(__dirname, "cookies.txt");
-  const hasCookies = fs.existsSync(cookiesPath);
   const hostname = new URL(sourceUrl).hostname.toLowerCase();
   const isYouTube = hostname === "youtu.be" || hostname.endsWith(".youtu.be") || hostname === "youtube.com" || hostname.endsWith(".youtube.com");
 
-  // Conservador para conexiones lentas: una descarga a la vez, reintentos reales y
-  // sin forzar un formato inexistente antes de saber qué stream entrega YouTube.
   const common = [
     "--no-playlist",
     "--newline",
-    "--retries", "5",
-    "--fragment-retries", "5",
-    "--file-access-retries", "3",
-    "--socket-timeout", "45",
+    "--socket-timeout", "30",
+    "--no-cookies",
+    "--no-cache-dir",
+    "--retries", "2",
+    "--fragment-retries", "2",
+    "--file-access-retries", "1",
     "--concurrent-fragments", "1",
-    "--merge-output-format", "mp4",
     "--no-part",
+    "-f", "18/best[height<=720]",
     "-o", outputTemplate,
     "--print", "after_move:filepath"
   ];
 
-  // web_safari va primero porque fue el cliente que sí produjo un MP4 válido en tus logs.
-  // Los demás son fallbacks independientes; no todos funcionan igual para cada sesión/video.
   const attempts = isYouTube ? [
-    { name: "youtube-web_safari", args: ["--extractor-args", "youtube:player_client=web_safari"] },
-    { name: "youtube-auto", args: [] },
-    ...(hasCookies ? [{ name: "youtube-web_safari-cookies", cookies: true, args: ["--extractor-args", "youtube:player_client=web_safari"] }] : []),
-    ...(hasCookies ? [{ name: "youtube-web-cookies", cookies: true, args: ["--extractor-args", "youtube:player_client=web"] }] : []),
-    { name: "youtube-mweb", args: ["--extractor-args", "youtube:player_client=mweb"] },
-    { name: "youtube-tv", args: ["--extractor-args", "youtube:player_client=tv"] },
-    { name: "youtube-android", args: ["--extractor-args", "youtube:player_client=android"] },
-    { name: "youtube-ios", args: ["--extractor-args", "youtube:player_client=ios"] }
+    { name: "android", args: ["--extractor-args", "youtube:player_client=android"] },
+    { name: "ios", args: ["--extractor-args", "youtube:player_client=ios"] },
+    { name: "tv_embedded", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
+    { name: "web_safari", args: ["--extractor-args", "youtube:player_client=web_safari"] }
   ] : [{ name: "auto", args: [] }];
 
   const errors = [];
 
-  for (const attempt of attempts) {
+  for (let index = 0; index < attempts.length; index++) {
+    const attempt = attempts[index];
     cleanupPartialDownload(jobId);
+    const attemptNumber = index + 1;
+    const started = Date.now();
+
+    report({
+      status: "downloading",
+      phase: `Intento ${attemptNumber}/${attempts.length} · ${attempt.name}`,
+      message: `Descargando con ${attempt.name}…`,
+      progress: 8 + Math.round(index * 8),
+      client: attempt.name,
+      attempt: attemptNumber,
+      totalAttempts: attempts.length
+    });
+
+    console.log(`YT-DLP [${jobId}] INTENTO ${attemptNumber}/${attempts.length} -> ${attempt.name}`);
 
     try {
-      const args = [...common, ...attempt.args];
-      if (attempt.cookies) args.push("--cookies", cookiesPath);
-
-      report({ status: "downloading", phase: "Descargando fuente", message: `Conectando con ${attempt.name}…`, progress: Math.min(42, 12 + attempts.indexOf(attempt) * 4), client: attempt.name });
-      console.log(`YT-DLP [${jobId}] → ${attempt.name}`);
-      const result = await run("yt-dlp", [...args, sourceUrl]);
+      const result = await runYtDlp([...common, ...attempt.args, sourceUrl], {
+        timeoutMs: 60000,
+        onProgress: percent => {
+          const base = 8 + index * 8;
+          const mapped = Math.min(44, Math.round(base + percent * 0.36));
+          report({
+            status: "downloading",
+            phase: `Descargando · ${attempt.name}`,
+            message: `${percent.toFixed(1)}% descargado con ${attempt.name}`,
+            progress: mapped,
+            downloadPercent: percent,
+            client: attempt.name,
+            attempt: attemptNumber,
+            totalAttempts: attempts.length
+          });
+        }
+      });
 
       const printed = (result.stdout || "").trim().split(/\r?\n/).filter(Boolean);
       const printedPath = printed.find(line => {
         try { return fs.existsSync(line) && fs.statSync(line).size > 1024; }
         catch { return false; }
       });
-
       const found = printedPath || findDownloadedFile(jobId);
-      if (found) {
-        report({ status: "analyzing", phase: "Fuente lista", message: `Descarga completada con ${attempt.name}. Analizando video…`, progress: 45, client: attempt.name });
-        console.log(`YT-DLP [${jobId}] ✓ descargado con ${attempt.name}: ${found}`);
-        return found;
-      }
 
-      throw new Error("yt-dlp terminó sin producir un archivo de video válido.");
+      if (!found) throw new Error("yt-dlp terminó sin producir un archivo de video válido.");
+
+      report({ status: "analyzing", phase: "Fuente lista", message: `Descarga completada con ${attempt.name}.`, progress: 45, client: attempt.name, downloadPercent: 100 });
+      console.log(`YT-DLP [${jobId}] OK en ${Math.round((Date.now() - started) / 1000)}s -> ${attempt.name}: ${found}`);
+      return found;
     } catch (error) {
+      const seconds = Math.max(1, Math.round((Date.now() - started) / 1000));
       const reason = shortError(error);
       errors.push({ client: attempt.name, reason });
-      console.error(`YT-DLP [${jobId}] ✗ ${attempt.name}: ${reason}`);
+      console.error(`YT-DLP [${jobId}] FALLÓ en ${seconds}s -> ${attempt.name}: ${reason}`);
+
+      if (attemptNumber < attempts.length) {
+        const next = attempts[index + 1].name;
+        report({
+          status: "downloading",
+          phase: `Falló ${attempt.name}`,
+          message: `Falló en ${seconds}s. Brincando a ${next}…`,
+          progress: 8 + index * 8,
+          client: next,
+          attempt: attemptNumber + 1,
+          totalAttempts: attempts.length
+        });
+      }
     }
   }
 
   cleanupPartialDownload(jobId);
-
   const summary = errors.map(x => `• ${x.client}: ${x.reason}`).join("\n");
-  throw new Error(
-    "No se pudo obtener un stream descargable para este video.\n" +
-    summary +
-    "\n\nCLIPRD probó fallbacks independientes. Si todos fallan, el video/sesión actual no está entregando un stream compatible a yt-dlp."
-  );
+  throw new Error("No se pudo descargar un stream compatible.\n" + summary);
 }
 function makeMetadata(index, start, end, sourceTitle) {
   const title = `${sourceTitle} · Clip ${index + 1}`;
@@ -253,28 +330,15 @@ function makeMetadata(index, start, end, sourceTitle) {
 async function createThumbnails(clipPath, clipName, duration) {
   const percentages = [0.10, 0.50, 0.85];
   const thumbnails = [];
-
   for (let i = 0; i < percentages.length; i++) {
     const seconds = Math.max(0.05, duration * percentages[i]);
     const thumbName = `${clipName}-${i + 1}.jpg`;
     const thumbPath = path.join(thumbsDir, thumbName);
-
-    report({ status: "processing", phase: `Creando clip ${index + 1} de ${clipCount}`, message: `Procesando el corte ${index + 1}/${clipCount}…`, progress: 52 + Math.round((index / Math.max(1, clipCount)) * 35), currentClip: index + 1, totalClips: clipCount });
-    await run("ffmpeg", [
-      "-y",
-      "-ss", String(seconds),
-      "-i", clipPath,
-      "-frames:v", "1",
-      "-q:v", "2",
-      thumbPath
-    ]);
-
+    await run("ffmpeg", ["-y", "-ss", String(seconds), "-i", clipPath, "-frames:v", "1", "-q:v", "2", thumbPath]);
     thumbnails.push(`http://127.0.0.1:${PORT}/thumbs/${encodeURIComponent(thumbName)}`);
   }
-
   return thumbnails;
 }
-
 async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3 }, report = () => {}) {
   const sourcePath = await resolveSource(sourceUrl, report);
   report({ status: "analyzing", phase: "Analizando video", message: "Leyendo duración y preparando cortes…", progress: 50 });
@@ -302,6 +366,7 @@ async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3 }, report =
     const fileName = `${clipName}.mp4`;
     const outputPath = path.join(clipsDir, fileName);
 
+    report({ status: "processing", phase: `Creando clip ${index + 1} de ${clipCount}`, message: `Procesando clip ${index + 1}/${clipCount}…`, progress: 52 + Math.round((index / Math.max(1, clipCount)) * 35), currentClip: index + 1, totalClips: clipCount });
     await run("ffmpeg", [
       "-y",
       "-ss", String(start),
@@ -340,6 +405,18 @@ const healthPayload = () => ({ ok: true, status: "online", engine: "cliprd", por
 app.get("/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/diagnostics", async (_req, res) => { try { const tools = await assertLocalTools(); res.json({ ...healthPayload(), tools }); } catch (error) { res.status(500).json({ ok:false, status:"degraded", error:error.message || String(error) }); } });
+
+app.delete("/clips/:id", (req, res) => {
+  const id = sanitizeName(req.params.id);
+  const files = fs.readdirSync(clipsDir).filter(name => path.parse(name).name === id);
+  if (!files.length) return res.status(404).json({ ok: false, error: "Clip no encontrado." });
+
+  for (const name of files) fs.rmSync(path.join(clipsDir, name), { force: true });
+  for (const name of fs.readdirSync(thumbsDir)) {
+    if (name.startsWith(id + "-")) fs.rmSync(path.join(thumbsDir, name), { force: true });
+  }
+  res.json({ ok: true, id, deleted: files });
+});
 
 app.get("/jobs/:id", (req, res) => {
   const job = jobs.get(req.params.id);
