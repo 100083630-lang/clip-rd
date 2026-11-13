@@ -96,21 +96,37 @@ async function resolveSource(sourceUrl) {
 
   const jobId = randomUUID().slice(0, 8);
   const outputTemplate = path.join(downloadsDir, `source-${jobId}.%(ext)s`);
-  const formats = ["bestvideo+bestaudio/best", "bv*+ba/best", "best", "worst"];
+  const cookiesPath = path.join(__dirname, "cookies.txt");
+  const common = [
+    "--no-playlist",
+    "--newline",
+    "--retries", "3",
+    "--fragment-retries", "3",
+    "--socket-timeout", "30",
+    "--merge-output-format", "mp4",
+    "-o", outputTemplate,
+    "--print", "after_move:filepath"
+  ];
+
+  const attempts = [
+    { name: "auto", args: [] },
+    { name: "android", args: ["--extractor-args", "youtube:player_client=android"] },
+    { name: "ios", args: ["--extractor-args", "youtube:player_client=ios"] },
+    { name: "format18", args: ["-f", "18/best"] }
+  ];
+
   let lastError = null;
 
-  for (const format of formats) {
+  for (const attempt of attempts) {
     try {
-      console.log(`YT-DLP: intentando formato "${format}"…`);
-      const result = await run("yt-dlp", [
-        "--no-playlist",
-        "-f", format,
-        "--merge-output-format", "mp4",
-        "--newline",
-        "-o", outputTemplate,
-        "--print", "after_move:filepath",
-        sourceUrl
-      ]);
+      const args = [...common];
+      if (fs.existsSync(cookiesPath) && attempt.name === "auto") {
+        args.push("--cookies", cookiesPath);
+      }
+      args.push(...attempt.args, sourceUrl);
+
+      console.log(`YT-DLP: intento ${attempt.name}…`);
+      const result = await run("yt-dlp", args);
       const printed = (result.stdout || "").trim().split(/\r?\n/).filter(Boolean);
       const printedPath = printed.find(line => fs.existsSync(line));
       if (printedPath) return printedPath;
@@ -124,11 +140,11 @@ async function resolveSource(sourceUrl) {
       throw new Error("yt-dlp terminó pero no se encontró el archivo descargado.");
     } catch (error) {
       lastError = error;
-      console.error(`YT-DLP falló con formato "${format}":`, error.message || error);
+      console.error(`YT-DLP falló en ${attempt.name}:`, error.message || error);
     }
   }
 
-  throw new Error(`No se pudo descargar el video. ${lastError?.message || ""}`);
+  throw new Error(`No se pudo descargar el video tras los fallbacks disponibles. ${lastError?.message || ""}`);
 }
 function makeMetadata(index, start, end, sourceTitle) {
   const title = `${sourceTitle} · Clip ${index + 1}`;
