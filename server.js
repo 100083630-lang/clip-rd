@@ -631,28 +631,79 @@ async function stopLiveCapture() {
   throw new Error("Live Buffer no logró capturar datos de este directo. El LIVE no expuso un stream descargable al motor durante la sesión.");
 }
 
+function prepareLocalLiveSource(localPath) {
+  const resolved = path.resolve(String(localPath || "").trim());
+  if (!resolved || !fs.existsSync(resolved)) throw new Error("No se encontró el archivo local indicado.");
+  const stat = fs.statSync(resolved);
+  if (!stat.isFile()) throw new Error("La fuente local debe ser un archivo de video.");
+  if (!/\.(mp4|mkv|webm|mov|m4v|ts)$/i.test(resolved)) {
+    throw new Error("Formato local no compatible. Usa MP4, MKV, WEBM, MOV, M4V o TS.");
+  }
+  return resolved;
+}
+
 app.post("/live/start", async (req, res) => {
-  const sourceUrl = req.body?.sourceUrl || null;
-  if (!sourceUrl) return res.status(400).json({ ok:false, error:"Pega primero la URL del LIVE." });
+  const sourceUrl = String(req.body?.sourceUrl || "").trim();
+  const localPathInput = String(req.body?.localPath || "").trim();
+  if (!sourceUrl && !localPathInput) {
+    return res.status(400).json({ ok:false, error:"Pega una URL del LIVE o indica un archivo local." });
+  }
   if (liveState.running) return res.status(409).json({ ok:false, error:"Ya hay un Live Radar activo." });
 
-  try { await assertLocalTools(); } catch (error) {
+  try {
+    // ffmpeg/ffprobe siempre son necesarios para analizar y recortar.
+    await Promise.all([run("ffmpeg", ["-version"]), run("ffprobe", ["-version"])]);
+  } catch (error) {
     return res.status(500).json({ ok:false, error:error.message });
   }
 
-  liveState.running = true;
-  liveState.startedAt = new Date().toISOString();
-  liveState.sourceUrl = sourceUrl;
-  liveState.markedMoments = [];
-  liveState.generatedClips = [];
-  liveState.jobId = null;
-  liveState.lastError = null;
-
-  startLiveCapture(sourceUrl);
-  res.status(202).json({
-    ok:true, running:true, active:true, startedAt:liveState.startedAt, sourceUrl,
-    captureStatus:liveState.captureStatus, message:liveState.captureMessage
+  Object.assign(liveState, {
+    running:true,
+    startedAt:new Date().toISOString(),
+    sourceUrl:sourceUrl || null,
+    markedMoments:[],
+    generatedClips:[],
+    jobId:null,
+    lastError:null,
+    captureError:null
   });
+
+  if (localPathInput) {
+    try {
+      const file = prepareLocalLiveSource(localPathInput);
+      Object.assign(liveState, {
+        sessionId:randomUUID().slice(0,10),
+        captureDir:path.dirname(file),
+        capturePath:file,
+        captureProcess:null,
+        captureStatus:"ready",
+        captureMessage:"Fuente local lista. CLIPRD puede analizarla y generar cortes automáticos.",
+        bytesCaptured:fs.statSync(file).size,
+        captureStartedAt:new Date().toISOString(),
+        captureStoppedAt:null,
+        captureAttempt:0
+      });
+      return res.status(202).json({
+        ok:true,running:true,active:true,mode:"local",startedAt:liveState.startedAt,
+        captureStatus:liveState.captureStatus,message:liveState.captureMessage
+      });
+    } catch (error) {
+      liveState.running=false;
+      return res.status(400).json({ ok:false,error:error.message });
+    }
+  }
+
+  try {
+    await run("yt-dlp", ["--version"]);
+    startLiveCapture(sourceUrl);
+    return res.status(202).json({
+      ok:true,running:true,active:true,mode:"live",startedAt:liveState.startedAt,sourceUrl,
+      captureStatus:liveState.captureStatus,message:liveState.captureMessage
+    });
+  } catch (error) {
+    liveState.running=false;
+    return res.status(500).json({ ok:false,error:error.message });
+  }
 });
 
 app.get("/live/status", (_req, res) => {
