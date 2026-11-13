@@ -634,7 +634,53 @@ function markLiveMoment(){const mark={time:Math.floor((Date.now()-(window.liveSt
 function addLiveOutputs(outputs){if(!Array.isArray(outputs)||!outputs.length)return;const old=getLib(),known=new Set(old.map(x=>x.url)),fresh=outputs.filter(o=>o.url&&!known.has(o.url)).map((o,i)=>ensureClipMeta({...o,name:o.title||('🔴 Live Clip '+(i+1)),created:o.created||Date.now(),folder:'🔴 Live'}));if(fresh.length)setLib([...fresh,...old])}
 async function pollLive(){try{const r=await fetch(AGENT+'/live/status',{cache:'no-store'});const x=await r.json();$('liveState').textContent=x.stopping?'🟠 DETENIENDO':(x.active?'🔴 RADAR ACTIVO':'STANDBY');$('liveMeta').textContent=x.stopping?' · finalizando último corte':(x.active?' · '+(x.processedSegments||0)+' cortes automáticos':' · monitor detenido');$('liveEvents').innerHTML=(x.events||[]).slice(0,6).map(e=>'• '+new Date(e.time).toLocaleTimeString()+' — '+escapeHtml(e.message)).join('<br>')||'Esperando eventos…';if(x.lastError)$('liveStatus').textContent='⚠️ '+x.lastError;addLiveOutputs(x.outputs)}catch{$('liveState').textContent='MOTOR NO DISPONIBLE'}}
 async function startLiveAuto(){const url=$('liveUrl').value.trim();if(!/^https?:\/\//i.test(url)){$('liveStatus').textContent='❌ Introduce una URL válida.';return}openLive();window.liveStartedAt=Date.now();try{const r=await fetch(AGENT+'/live/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:45,maxClips:1})}),x=await r.json();if(!r.ok)throw Error(x.error||'No se pudo iniciar');$('liveStatus').textContent='🟢 Radar activo. Generando un corte automático cada 45 segundos.';clearInterval(liveTimer);liveTimer=setInterval(pollLive,5000);pollLive()}catch(e){$('liveStatus').textContent='❌ '+e.message}}
-async function stopLiveAuto(){const btn=$('liveStopBtn');if(btn&&btn.dataset.stopping==='1')return;if(btn){btn.dataset.stopping='1';btn.disabled=true;btn.textContent='⏳ Deteniendo…'}$('liveStatus').textContent='⏳ Deteniendo captura y procesando el último corte…';try{const r=await fetch(AGENT+'/live/stop',{method:'POST'}),x=await r.json();if(!r.ok)throw Error(x.error||'No se pudo detener');addLiveOutputs(x.outputs);$('liveStatus').textContent='■ Detenido. Último corte enviado a Biblioteca.'}catch(e){$('liveStatus').textContent='⚠️ '+e.message}finally{clearInterval(liveTimer);if(btn){btn.disabled=false;btn.dataset.stopping='';btn.textContent='■ Detenido'}await pollLive()}}
+async function stopLiveAuto(){
+  const btn=$('liveStopBtn');
+  if(btn&&btn.dataset.stopping==='1')return;
+  if(btn){btn.dataset.stopping='1';btn.disabled=true;btn.textContent='⏳ Procesando…';}
+  $('liveStatus').textContent='📥 Preparando descarga del radar…';
+
+  try{
+    const r=await fetch(AGENT+'/live/stop',{method:'POST',headers:{'content-type':'application/json'}});
+    const x=await r.json();
+    if(!r.ok||!x.jobId)throw Error(x.error||'No se pudo iniciar el procesamiento del Live Radar.');
+
+    const jobId=x.jobId;
+    const poll=async()=>{
+      const jr=await fetch(AGENT+'/jobs/'+encodeURIComponent(jobId),{cache:'no-store'});
+      const job=await jr.json();
+      if(!jr.ok)throw Error(job.error||'No se pudo leer el progreso del Live Radar.');
+
+      const pct=Number(job.downloadPercent);
+      const progressText=Number.isFinite(pct)?(' · '+pct.toFixed(1)+'% descargado'):'';
+      $('liveStatus').textContent='📥 '+(job.phase||'Procesando Live Radar')+progressText+' — '+(job.message||'Trabajando…');
+      $('liveState').textContent=job.status==='error'?'⚠️ ERROR':job.status==='completed'?'🟢 COMPLETADO':'🔴 PROCESANDO';
+      $('liveMeta').textContent=' · '+Math.round(Number(job.progress)||0)+'%';
+
+      if(!['completed','error'].includes(job.status)){
+        setTimeout(()=>poll().catch(fail),700);
+        return;
+      }
+      if(job.status==='error')throw Error(job.error||job.message||'Falló el procesamiento del Live Radar.');
+
+      const outputs=job.clips||[];
+      addLiveOutputs(outputs);
+      $('liveStatus').textContent='✅ '+outputs.length+' corte(s) listos y enviados a Biblioteca.';
+      if(btn){btn.textContent='■ Detenido';btn.disabled=false;btn.dataset.stopping='';}
+      clearInterval(liveTimer);
+      await pollLive();
+    };
+    const fail=(e)=>{
+      $('liveStatus').textContent='⚠️ '+e.message;
+      $('liveState').textContent='⚠️ ERROR';
+      if(btn){btn.disabled=false;btn.dataset.stopping='';btn.textContent='■ Detenido';}
+    };
+    poll().catch(fail);
+  }catch(e){
+    $('liveStatus').textContent='⚠️ '+e.message;
+    if(btn){btn.disabled=false;btn.dataset.stopping='';btn.textContent='■ Detenido';}
+  }
+}
 function clipOptions(){const a=getLib(),h=a.length?a.map((x,i)=>'<option value="'+i+'">'+escapeHtml(x.title||x.name||('Clip '+(i+1)))+'</option>').join(''):'<option value="">No hay clips todavía</option>';['publishClip','coverClip','calendarClip'].forEach(id=>{if($(id))$(id).innerHTML=h})}
 function selectClipForPublish(i){showView('publish');clipOptions();$('publishClip').value=i;updatePublishPreview()}
 let currentPlatform='youtube';function setPlatform(p){currentPlatform=p;document.querySelectorAll('[data-platform]').forEach(b=>b.classList.toggle('active',b.dataset.platform===p));updatePublishPreview()}
