@@ -93,7 +93,7 @@ button,input,select,textarea{font:inherit}.app{max-width:1600px;margin:auto;padd
     </div>
     <div class="card live-preview-card">
       <div class="live-preview-head"><div><span class="live-red-dot"></span><b>EN VIVO</b><small>Vista previa del LIVE</small></div><span class="live-quality">HD</span></div>
-      <div class="live-screen"><iframe id="liveFrame" class="liveframe" allow="autoplay;encrypted-media;picture-in-picture" allowfullscreen></iframe><div class="live-scan"></div></div>
+      <div class="live-screen"><iframe id="liveFrame" class="liveframe" title="Vista previa del LIVE" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe><div class="live-scan"></div></div>
       <div class="live-preview-footer"><div class="live-state-pill"><span></span><b id="liveState">STANDBY</b></div><span class="small" id="liveMeta">monitor detenido</span></div>
     </div>
   </div>
@@ -146,12 +146,15 @@ function openLive(){
   const id=youtubeId($('liveUrl').value.trim());
   if(!id){$('liveStatus').textContent='❌ URL de YouTube inválida.';return false}
   const frame=$('liveFrame');
-  // YouTube Error 153: el embed necesita un origen/referer identificable.
-  const origin=location.origin&&location.origin!=='null'?location.origin:'http://localhost';
+  // Error 153: YouTube exige identificar el cliente/origen del embed.
+  const origin=(location.origin&&location.origin!=='null')?location.origin:'http://127.0.0.1:8000';
   const params=new URLSearchParams({
-    autoplay:'1',mute:'1',playsinline:'1',rel:'0',
-    origin:origin,
-    enablejsapi:'1'
+    autoplay:'1',
+    mute:'1',
+    playsinline:'1',
+    rel:'0',
+    enablejsapi:'1',
+    origin:origin
   });
   frame.src='https://www.youtube.com/embed/'+encodeURIComponent(id)+'?'+params.toString();
   return true
