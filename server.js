@@ -223,21 +223,27 @@ async function resolveSource(sourceUrl, report = () => {}, options = {}) {
     "--print", "after_move:filepath"
   ];
 
-  // Dos fases: primero formato progresivo 18 (el perfil que ya funciona en esta PC).
-  // Si ese video no publica formato 18, se intenta el mejor stream <=720p del MISMO
-  // cliente. Así no descartamos videos válidos solo porque no tengan ID 18.
-  // Cadena progresiva: no asumimos que todos los videos expongan el mismo formato
-  // ni que un cliente concreto tenga streams disponibles. No se usan cookies ni PO tokens.
-  const attempts = isYouTube ? [
+  // Perfil VOD y perfil LIVE separados. Los en vivos no deben forzarse a formato 18
+  // ni tratarse como una descarga estática con watchdog de 60 segundos.
+  const vodAttempts = isYouTube ? [
     { name: "android-18", format: "18", args: ["--extractor-args", "youtube:player_client=android"] },
     { name: "android-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android"] },
-    { name: "android_creator-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android_creator"] },
-    { name: "android_vr-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=android_vr"] },
     { name: "mweb-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=mweb"] },
     { name: "ios-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=ios"] },
     { name: "tv_embedded-best", format: "best[height<=720]/best", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
     { name: "youtube-default", format: "best[height<=720]/best", args: [] }
   ] : [{ name: "auto", format: "best[height<=720]/best", args: [] }];
+
+  // LIVE: se pide una representación descargable completa, se permite HLS con ffmpeg
+  // y se da mucho más margen de actividad porque un stream puede esperar segmentos.
+  const liveAttempts = isYouTube ? [
+    { name: "live-android", format: "b/best", args: ["--extractor-args", "youtube:player_client=android", "--live-from-start", "--downloader", "ffmpeg"] },
+    { name: "live-mweb", format: "b/best", args: ["--extractor-args", "youtube:player_client=mweb", "--live-from-start", "--downloader", "ffmpeg"] },
+    { name: "live-ios", format: "b/best", args: ["--extractor-args", "youtube:player_client=ios", "--live-from-start", "--downloader", "ffmpeg"] },
+    { name: "live-default", format: "b/best", args: ["--live-from-start", "--downloader", "ffmpeg"] }
+  ] : [{ name: "live-auto", format: "best", args: ["--live-from-start", "--downloader", "ffmpeg"] }];
+
+  const attempts = options.live ? liveAttempts : vodAttempts;
   const errors = [];
 
   for (let index = 0; index < attempts.length; index++) {
@@ -261,7 +267,7 @@ async function resolveSource(sourceUrl, report = () => {}, options = {}) {
     try {
       // Orden deliberado: extractor + formato antes de la URL, igual que el comando probado.
       const result = await runYtDlp([...common, ...attempt.args, "-f", attempt.format, sourceUrl], {
-        timeoutMs: 60000,
+        timeoutMs: options.live ? 180000 : 60000,
         onProgress: percent => {
           const base = 8 + index * 8;
           const mapped = Math.min(44, Math.round(base + percent * 0.36));
@@ -313,7 +319,7 @@ async function resolveSource(sourceUrl, report = () => {}, options = {}) {
 
   cleanupPartialDownload(jobId);
   const summary = errors.map(x => `• ${x.client}: ${x.reason}`).join("\n");
-  throw new Error("YouTube no expuso ningún stream descargable para este enlace con los clientes disponibles. Esto no es un fallo del cortador: la fuente no entregó formatos de video utilizables.\n" + summary);
+  throw new Error(options.live ? "El Live Radar no pudo obtener una representación descargable del en vivo actual. CLIPRD ya probó perfiles LIVE y HLS/ffmpeg; si YouTube no expone un stream a yt-dlp para ese directo, no existe un archivo que el cortador pueda recortar.\n" + summary : "YouTube no expuso ningún stream descargable para este enlace con los clientes disponibles. Esto no es un fallo del cortador: la fuente no entregó formatos de video utilizables.\n" + summary);
 }
 function makeMetadata(index, start, end, sourceTitle, viralScore = 70) {
   return {
@@ -531,7 +537,7 @@ app.post("/live/stop", (req, res) => {
     try {
       // Usa EXACTAMENTE la misma ruta de descarga que Auto Clip.
       report({ status:"downloading", phase:"Live Radar · preparando fuente", message:"Descargando la fuente del radar…", progress:5 });
-      const clips = await buildClips({ sourceUrl, clipLength, maxClips, liveMode:false }, report);
+      const clips = await buildClips({ sourceUrl, clipLength, maxClips, liveMode:true }, report);
       liveState.generatedClips = clips;
       report({ status:"completed", phase:"Live Radar completado", message:`${clips.length} cortes listos en Biblioteca.`, progress:100, clips });
     } catch (error) {
