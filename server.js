@@ -15,8 +15,9 @@ const app = express();
 const clipsDir = path.join(__dirname, "clips");
 const thumbsDir = path.join(__dirname, "thumbs");
 const downloadsDir = path.join(__dirname, "downloads");
+const liveBufferDir = path.join(__dirname, "live-buffer");
 
-for (const dir of [clipsDir, thumbsDir, downloadsDir]) {
+for (const dir of [clipsDir, thumbsDir, downloadsDir, liveBufferDir]) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -44,7 +45,18 @@ const liveState = {
   startedAt: null,
   sourceUrl: null,
   markedMoments: [],
-  generatedClips: []
+  generatedClips: [],
+  sessionId: null,
+  captureDir: null,
+  capturePath: null,
+  captureProcess: null,
+  captureStatus: "idle",
+  captureMessage: "Sin captura activa.",
+  captureError: null,
+  bytesCaptured: 0,
+  captureStartedAt: null,
+  captureStoppedAt: null,
+  captureAttempt: 0
 };
 
 function run(command, args, options = {}) {
@@ -389,8 +401,8 @@ async function selectViralWindows(sourcePath, duration, clipLength, maxClips, re
   return chosen.sort((a,b)=>a.start-b.start);
 }
 
-async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3, liveMode = false }, report = () => {}) {
-  const sourcePath = await resolveSource(sourceUrl, report, { live: liveMode });
+async function buildClips({ sourceUrl, sourcePath: providedSourcePath = null, clipLength = 45, maxClips = 3, liveMode = false }, report = () => {}) {
+  const sourcePath = providedSourcePath || await resolveSource(sourceUrl, report, { live: liveMode });
   report({ status:"analyzing", phase:"Analizando video", message:"Buscando automáticamente los momentos con mayor señal de atención…", progress:50 });
   const sourceDuration = await getDuration(sourcePath);
   const safeClipLength = Math.min(Math.max(Number(clipLength)||45,5),600);
@@ -489,57 +501,200 @@ app.post("/auto-clips", (req, res) => {
   })();
 });
 
-app.post("/live/start", (req, res) => {
+function findLargestVideo(dir) {
+  if (!dir || !fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir)
+    .filter(name => /\.(mp4|mkv|webm|ts|m4a)$/i.test(name))
+    .map(name => path.join(dir, name))
+    .filter(file => { try { return fs.statSync(file).size > 1024 * 256; } catch { return false; } })
+    .sort((a,b) => fs.statSync(b).size - fs.statSync(a).size);
+  return files[0] || null;
+}
+
+function startLiveCapture(sourceUrl) {
+  const sessionId = randomUUID().slice(0, 10);
+  const dir = path.join(liveBufferDir, sessionId);
+  fs.mkdirSync(dir, { recursive:true });
+
+  liveState.sessionId = sessionId;
+  liveState.captureDir = dir;
+  liveState.capturePath = null;
+  liveState.captureStatus = "connecting";
+  liveState.captureMessage = "Conectando al stream y creando buffer local…";
+  liveState.captureError = null;
+  liveState.bytesCaptured = 0;
+  liveState.captureStartedAt = new Date().toISOString();
+  liveState.captureStoppedAt = null;
+  liveState.captureAttempt = 0;
+
+  const profiles = [
+    { name:"android", extractor:"youtube:player_client=android" },
+    { name:"ios", extractor:"youtube:player_client=ios" },
+    { name:"default", extractor:null }
+  ];
+
+  let index = 0;
+  const launch = () => {
+    if (!liveState.running || index >= profiles.length) {
+      if (!liveState.capturePath) {
+        liveState.captureStatus = "error";
+        liveState.captureMessage = "No fue posible abrir una fuente descargable para este LIVE.";
+      }
+      return;
+    }
+
+    const profile = profiles[index++];
+    liveState.captureAttempt = index;
+    liveState.captureStatus = "connecting";
+    liveState.captureMessage = `Conectando Live Buffer · intento ${index}/${profiles.length} · ${profile.name}`;
+
+    const output = path.join(dir, "capture.%(ext)s");
+    const args = [
+      "--ignore-config", "--no-playlist", "--newline", "--no-cache-dir",
+      "--socket-timeout","30",
+      "--live-from-start",
+      "--hls-use-mpegts",
+      "--downloader","ffmpeg",
+      "-f","b/best",
+      "-o", output
+    ];
+    if (profile.extractor) args.push("--extractor-args", profile.extractor);
+    args.push(sourceUrl);
+
+    console.log(`LIVE BUFFER [${sessionId}] INTENTO ${index}/${profiles.length} -> ${profile.name}`);
+    const child = spawn("yt-dlp", args, { windowsHide:true });
+    liveState.captureProcess = child;
+    let stderr = "";
+    let produced = false;
+
+    const refresh = () => {
+      const file = findLargestVideo(dir);
+      if (file) {
+        produced = true;
+        liveState.capturePath = file;
+        try { liveState.bytesCaptured = fs.statSync(file).size; } catch {}
+        liveState.captureStatus = "recording";
+        liveState.captureMessage = `Grabando buffer local · ${Math.round(liveState.bytesCaptured/1024/1024)} MB capturados`;
+      }
+    };
+    const timer = setInterval(refresh, 1000);
+
+    child.stderr?.on("data", d => { stderr += d.toString(); refresh(); });
+    child.stdout?.on("data", () => refresh());
+
+    child.on("error", err => {
+      clearInterval(timer);
+      if (liveState.running && liveState.captureProcess === child) {
+        liveState.captureError = err.message;
+        launch();
+      }
+    });
+    child.on("close", code => {
+      clearInterval(timer);
+      refresh();
+      if (liveState.captureProcess === child) liveState.captureProcess = null;
+
+      if (!liveState.running) {
+        liveState.captureStoppedAt = new Date().toISOString();
+        return;
+      }
+      if (produced || liveState.capturePath) {
+        // Si el proceso termina pero ya dejó material, lo conservamos para el stop.
+        liveState.captureStatus = "buffered";
+        liveState.captureMessage = "Buffer disponible; esperando nuevos segmentos o detener.";
+        return;
+      }
+      liveState.captureError = shortError(new Error(stderr || `yt-dlp terminó con código ${code}`));
+      console.error(`LIVE BUFFER [${sessionId}] FALLÓ -> ${profile.name}: ${liveState.captureError}`);
+      launch();
+    });
+  };
+
+  launch();
+}
+
+async function stopLiveCapture() {
+  liveState.running = false;
+  const child = liveState.captureProcess;
+  liveState.captureProcess = null;
+  if (child) await killProcessTree(child);
+  await new Promise(resolve => setTimeout(resolve, 700));
+  const file = liveState.capturePath || findLargestVideo(liveState.captureDir);
+  if (file && fs.existsSync(file)) {
+    liveState.capturePath = file;
+    try { liveState.bytesCaptured = fs.statSync(file).size; } catch {}
+    liveState.captureStatus = "ready";
+    liveState.captureMessage = "Buffer local listo para generar cortes.";
+    return file;
+  }
+  liveState.captureStatus = "error";
+  throw new Error("Live Buffer no logró capturar datos de este directo. El LIVE no expuso un stream descargable al motor durante la sesión.");
+}
+
+app.post("/live/start", async (req, res) => {
+  const sourceUrl = req.body?.sourceUrl || null;
+  if (!sourceUrl) return res.status(400).json({ ok:false, error:"Pega primero la URL del LIVE." });
+  if (liveState.running) return res.status(409).json({ ok:false, error:"Ya hay un Live Radar activo." });
+
+  try { await assertLocalTools(); } catch (error) {
+    return res.status(500).json({ ok:false, error:error.message });
+  }
+
   liveState.running = true;
   liveState.startedAt = new Date().toISOString();
-  liveState.sourceUrl = req.body?.sourceUrl || null;
+  liveState.sourceUrl = sourceUrl;
   liveState.markedMoments = [];
   liveState.generatedClips = [];
   liveState.jobId = null;
   liveState.lastError = null;
 
-  res.json({ ok:true, running:true, active:true, startedAt:liveState.startedAt, sourceUrl:liveState.sourceUrl });
+  startLiveCapture(sourceUrl);
+  res.status(202).json({
+    ok:true, running:true, active:true, startedAt:liveState.startedAt, sourceUrl,
+    captureStatus:liveState.captureStatus, message:liveState.captureMessage
+  });
 });
 
 app.get("/live/status", (_req, res) => {
   const job = liveState.jobId ? jobs.get(liveState.jobId) : null;
+  const file = liveState.capturePath || findLargestVideo(liveState.captureDir);
+  if (file && fs.existsSync(file)) {
+    liveState.capturePath = file;
+    try { liveState.bytesCaptured = fs.statSync(file).size; } catch {}
+  }
   res.json({
-    ok:true,
-    running:liveState.running,
-    active:liveState.running,
+    ok:true, running:liveState.running, active:liveState.running,
     stopping:!!job && !["completed","error"].includes(job.status),
-    startedAt:liveState.startedAt,
-    sourceUrl:liveState.sourceUrl,
-    markedMoments:liveState.markedMoments || [],
-    clips:liveState.generatedClips || [],
-    outputs:liveState.generatedClips || [],
-    jobId:liveState.jobId || null,
-    job:job || null,
-    lastError:liveState.lastError || null
+    startedAt:liveState.startedAt, sourceUrl:liveState.sourceUrl,
+    markedMoments:liveState.markedMoments || [], clips:liveState.generatedClips || [],
+    outputs:liveState.generatedClips || [], jobId:liveState.jobId || null, job:job || null,
+    lastError:liveState.lastError || null,
+    captureStatus:liveState.captureStatus,
+    captureMessage:liveState.captureMessage,
+    captureError:liveState.captureError,
+    bytesCaptured:liveState.bytesCaptured,
+    sessionId:liveState.sessionId
   });
 });
 
 app.post("/live/stop", (req, res) => {
-  const sourceUrl = req.body?.sourceUrl || liveState.sourceUrl;
   const clipLength = req.body?.clipLength || 45;
-  const maxClips = req.body?.maxClips || Math.max(1, (liveState.markedMoments || []).length || 3);
-  if (!sourceUrl) return res.status(400).json({ ok:false, error:"No hay una fuente para procesar." });
-
+  const maxClips = req.body?.maxClips || 3;
   const job = createJob();
   const report = jobReporter(job);
   liveState.jobId = job.id;
-  liveState.running = false;
   liveState.lastError = null;
 
   res.status(202).json({ ok:true, jobId:job.id, status:job.status });
 
   (async () => {
     try {
-      // Usa EXACTAMENTE la misma ruta de descarga que Auto Clip.
-      report({ status:"downloading", phase:"Live Radar · preparando fuente", message:"Descargando la fuente del radar…", progress:5 });
-      const clips = await buildClips({ sourceUrl, clipLength, maxClips, liveMode:true }, report);
+      report({ status:"capturing", phase:"Cerrando Live Buffer", message:"Finalizando la captura local…", progress:8 });
+      const sourcePath = await stopLiveCapture();
+      report({ status:"analyzing", phase:"Analizando Live Buffer", message:"Buscando automáticamente los momentos con mayor potencial…", progress:45 });
+      const clips = await buildClips({ sourcePath, sourceUrl:liveState.sourceUrl, clipLength, maxClips, liveMode:false }, report);
       liveState.generatedClips = clips;
-      report({ status:"completed", phase:"Live Radar completado", message:`${clips.length} cortes listos en Biblioteca.`, progress:100, clips });
+      report({ status:"completed", phase:"Live Radar completado", message:`${clips.length} cortes automáticos listos en Biblioteca.`, progress:100, clips });
     } catch (error) {
       console.error("LIVE STOP ERROR:", error);
       liveState.lastError = error.message || String(error);
