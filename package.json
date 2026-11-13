@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node scripts/build-static.mjs",
     "dev": "npx serve .",
-    "start": "node server.js"
+    "start": "node server.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
