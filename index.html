@@ -319,6 +319,24 @@ body:before{display:none}
   .action-dock{grid-template-columns:1fr 1fr!important}
 }
 
+
+
+/* ===== CLIPRD PRODUCTION CONSOLE ===== */
+.studio-pro{max-width:1450px;margin:0 auto}
+.studio-header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin:8px 0 22px}
+.studio-header h2{font-size:46px;margin:7px 0 6px;letter-spacing:-2px}.studio-header p{margin:0;color:var(--muted)}
+.studio-ready{display:flex;align-items:center;gap:8px;padding:11px 14px;border:1px solid var(--line);border-radius:999px;background:#0b1017;font-size:10px;letter-spacing:1px;font-weight:900}.studio-ready i{width:8px;height:8px;border-radius:50%;background:var(--signal);box-shadow:0 0 14px var(--signal)}.studio-ready b{color:var(--signal)}
+.studio-layout{display:grid;grid-template-columns:minmax(390px,.9fr) minmax(500px,1.3fr);gap:18px}
+.studio-form-card,.production-monitor{border-radius:20px!important;background:linear-gradient(145deg,#111722,#0c1118)!important}
+.card-title-row,.monitor-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.card-title-row>div{display:flex;align-items:center;gap:10px}.section-index{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:rgba(199,255,79,.12);color:var(--signal);font-size:11px;font-weight:1000}.card-title-row small{color:var(--muted)}
+.studio-launch{background:linear-gradient(135deg,var(--signal),#a5ed42)!important;color:#101407!important;box-shadow:0 14px 35px rgba(199,255,79,.12)!important}.studio-launch:disabled{opacity:.65;cursor:wait}.studio-hint{font-size:12px!important;background:rgba(143,216,255,.04)!important}
+.production-monitor{position:relative;overflow:hidden;min-height:460px;display:flex;flex-direction:column}.production-monitor:before{content:"";position:absolute;inset:auto -20% -65% 25%;height:300px;background:radial-gradient(circle,rgba(143,216,255,.12),transparent 66%);pointer-events:none}.monitor-head{position:relative}.monitor-head h3{margin:5px 0 0;font-size:26px;letter-spacing:-1px}.monitor-orb{width:48px;height:48px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;background:#0a0f16}.monitor-orb i{width:12px;height:12px;border-radius:50%;background:#657084}.working .monitor-orb i{background:var(--ice);box-shadow:0 0 24px var(--ice);animation:jobPulse 1.4s infinite}.complete .monitor-orb i{background:var(--signal);box-shadow:0 0 24px var(--signal)}.failed .monitor-orb i{background:#ff5874}
+.progress-shell{display:flex;align-items:center;gap:14px;margin:34px 0 16px}.progress-shell b{font-size:18px;min-width:42px;text-align:right}.progress-track{height:10px;flex:1;background:#080c12;border:1px solid var(--line);border-radius:99px;overflow:hidden}.progress-fill{height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--signal),var(--ice));box-shadow:0 0 18px rgba(143,216,255,.35);transition:width .45s ease}.monitor-message{min-height:58px;padding:15px;border:1px solid var(--line);border-radius:13px;background:rgba(5,8,12,.38);color:#b6c0cc;font-size:13px;line-height:1.55}
+.pipeline{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:28px 0}.pipeline>i{height:1px;flex:1;background:var(--line);max-width:55px}.pipe-step{position:relative;display:grid;gap:4px;min-width:82px}.pipe-step span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;border:1px solid var(--line);color:var(--muted);font-size:10px}.pipe-step b{font-size:12px}.pipe-step small{font-size:10px;color:var(--muted)}.pipe-step.active span{background:var(--signal);color:#101407;border-color:var(--signal);box-shadow:0 0 20px rgba(199,255,79,.18)}.pipe-step.active b{color:#f6f9fb}
+.monitor-meta{margin-top:auto;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:10px}
+@keyframes jobPulse{50%{transform:scale(1.35);opacity:.55}}
+@media(max-width:1050px){.studio-layout{grid-template-columns:1fr}.production-monitor{min-height:400px}}@media(max-width:600px){.studio-header{align-items:flex-start;flex-direction:column}.studio-header h2{font-size:36px}.studio-layout{grid-template-columns:1fr}.pipeline{overflow:auto}.pipeline>i{min-width:20px}.pipe-step{min-width:72px}.monitor-meta{flex-direction:column}}
+
 </style>
 </head>
 <body><main class="app"><div class="shell">
@@ -405,7 +423,45 @@ body:before{display:none}
 <div class="folders" id="folderBar"></div><div class="grid" id="libraryGrid"></div>
 </section>
 
-<section id="studio" class="view"><div class="eyebrow">AUTO CLIP ENGINE</div><h2>Convierte una fuente en contenido.</h2><div class="studio"><div class="card"><label>URL del contenido propio o autorizado</label><input id="sourceUrl" placeholder="https://www.youtube.com/watch?v=..."><div class="row"><div style="flex:1"><label>Duración por clip</label><input id="clipLength" type="number" value="45" min="10" max="180"></div><div style="flex:1"><label>Cantidad máxima</label><input id="maxClips" type="number" value="4" min="1" max="12"></div></div><label>Nombre de la carpeta de producción</label><input id="jobFolder" placeholder="Ej.: Podcast noviembre"><button class="btn" style="margin-top:18px;width:100%" onclick="createClips()">✨ Generar clips</button><div class="notice" id="jobStatus">El procesamiento se ejecuta en tu motor local.</div></div><div class="card"><div class="eyebrow">CREATOR FLOW</div><h3>De video a publicación</h3><p class="small">Los nuevos clips se guardan en su carpeta, conservan su posición de inicio para ordenarlos correctamente y llegan a la Biblioteca con preview, descripción, transcripción y recursos visuales cuando el motor los devuelve.</p><div class="notice">💡 Consejo: usa una carpeta por Live, podcast o proyecto para trabajar como un verdadero estudio de contenido.</div></div></div></section>
+<section id="studio" class="view studio-pro">
+  <div class="studio-header">
+    <div><div class="eyebrow">AUTO CLIP ENGINE</div><h2>Tu mesa de producción.</h2><p>Convierte una fuente en clips y sigue el trabajo del motor en tiempo real.</p></div>
+    <div class="studio-ready"><i></i><span>MOTOR LOCAL</span><b>READY</b></div>
+  </div>
+  <div class="studio-layout">
+    <div class="card studio-form-card">
+      <div class="card-title-row"><div><span class="section-index">01</span><b>Configura la producción</b></div><small>Tu contenido</small></div>
+      <label>URL del contenido propio o autorizado</label>
+      <input id="sourceUrl" placeholder="Pega aquí la URL del video">
+      <div class="row">
+        <div style="flex:1"><label>Duración por clip</label><input id="clipLength" type="number" value="45" min="10" max="180"></div>
+        <div style="flex:1"><label>Cantidad máxima</label><input id="maxClips" type="number" value="4" min="1" max="12"></div>
+      </div>
+      <label>Proyecto</label><input id="jobFolder" placeholder="Ej.: Podcast noviembre">
+      <button id="createClipsBtn" class="btn studio-launch" style="margin-top:18px;width:100%" onclick="createClips()"><span>✦</span> Iniciar producción</button>
+      <div class="notice studio-hint">CLIPRD procesa el trabajo localmente y te muestra cada fase del proceso.</div>
+    </div>
+
+    <div class="card production-monitor" id="productionMonitor">
+      <div class="monitor-head">
+        <div><span class="eyebrow">LIVE PRODUCTION STATUS</span><h3 id="jobPhase">Esperando trabajo</h3></div>
+        <div class="monitor-orb" id="jobOrb"><i></i></div>
+      </div>
+      <div class="progress-shell"><div class="progress-track"><div class="progress-fill" id="jobProgress"></div></div><b id="jobPercent">0%</b></div>
+      <div class="monitor-message" id="jobStatus">Todo listo. Cuando inicies una producción, CLIPRD mostrará el estado de descarga y creación de clips aquí.</div>
+      <div class="pipeline">
+        <div class="pipe-step" id="pipeDownload"><span>01</span><b>Fuente</b><small>Descargar</small></div>
+        <i></i>
+        <div class="pipe-step" id="pipeAnalyze"><span>02</span><b>Análisis</b><small>Preparar</small></div>
+        <i></i>
+        <div class="pipe-step" id="pipeClips"><span>03</span><b>Clips</b><small>Procesar</small></div>
+        <i></i>
+        <div class="pipe-step" id="pipeDone"><span>04</span><b>Listo</b><small>Biblioteca</small></div>
+      </div>
+      <div class="monitor-meta"><span id="jobClient">—</span><span id="jobCounter">Sin trabajos activos</span></div>
+    </div>
+  </div>
+</section>
 
 <section id="live" class="view live-radar-view">
   <div class="live-radar-hero">
@@ -483,7 +539,47 @@ function closeClipModal(){$('clipModal').classList.remove('open');requestAnimati
 function chooseThumbnail(i,n){const a=getLib(),x=a[i];if(!x?.thumbnails?.[n])return;x.coverUrl=x.thumbnails[n];a[i]=x;setLib(a);openClip(i)}
 function clearLibrary(){if(confirm('¿Eliminar los clips guardados localmente?'))setLib([])}
 async function checkEngine(){const status=$('engineStatus'),info=$('engineInfo'),dot=$('dot');if(!status||!info||!dot)return;status.textContent='Comprobando motor…';try{const r=await Promise.race([fetch(AGENT+'/health?ts='+Date.now(),{cache:'no-store'}),new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')),2500))]);const x=await r.json();if(!r.ok||!x.ok)throw Error('Motor no listo');status.textContent='Motor local conectado';dot.classList.add('on');info.textContent='ONLINE · listo para crear clips'}catch(e){status.textContent='Motor local desconectado';dot.classList.remove('on');info.textContent='Abre el agente y ejecuta npm start'}}
-async function createClips(){const url=$('sourceUrl').value.trim(),len=+$('clipLength').value,max=+$('maxClips').value,folder=$('jobFolder').value.trim(),st=$('jobStatus');if(!/^https?:\/\//i.test(url)){st.textContent='❌ Introduce una URL válida.';return}st.textContent='⏳ Enviando trabajo al motor local…';try{let r=await fetch(AGENT+'/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});if(r.status===404)r=await fetch(AGENT+'/api/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});let x={};try{x=await r.json()}catch{}if(!r.ok)throw Error(x.error||'El motor respondió HTTP '+r.status);const now=Date.now(),sourceTitle=(url.split('/').pop()||'Contenido original').replace(/[-_]/g,' '),items=(x.outputs||x.clips||[]).map((o,i)=>{const start=Number(o.start)||0,end=Number(o.end)||0,copy=autoCopy({...o,start,end},sourceTitle);const thumbs=Array.isArray(o.thumbnails)?o.thumbnails.filter(Boolean).slice(0,3):[];const cover=o.coverUrl||o.cover||thumbs[0]||makeFallbackCover(copy.title);return ensureClipMeta({name:o.title||copy.title||('Clip '+(i+1)),title:copy.title,url:o.url,coverUrl:cover,description:copy.description,hashtags:copy.hashtags,clipTranscript:o.clipTranscript||o.transcript||'',thumbnails:thumbs,created:o.created||now+i,start,end,folder:folder||undefined,viralScore:o.viralScore||o.score})});if(!items.length)throw Error('El motor terminó sin devolver clips.');setLib([...items,...getLib()]);st.textContent='✅ '+items.length+' clips listos y guardados en la Biblioteca.';showView('library')}catch(e){st.textContent='❌ '+e.message}}
+function setProductionUI(job){
+  const p=Math.max(0,Math.min(100,Number(job.progress)||0));
+  $('jobProgress').style.width=p+'%';$('jobPercent').textContent=p+'%';
+  $('jobPhase').textContent=job.phase||'Procesando';
+  $('jobStatus').textContent=job.message||'El motor está trabajando…';
+  $('jobClient').textContent=job.client?('Cliente: '+job.client):'Motor CLIPRD';
+  $('jobCounter').textContent=job.totalClips?('Clip '+(job.currentClip||0)+' de '+job.totalClips):(job.status==='completed'?'Producción terminada':'Trabajo activo');
+  const steps=['pipeDownload','pipeAnalyze','pipeClips','pipeDone'];
+  let active=0;if(p>=45)active=1;if(p>=52)active=2;if(job.status==='completed')active=3;
+  steps.forEach((id,i)=>$(id).classList.toggle('active',i<=active));
+  $('productionMonitor').classList.toggle('working',!['completed','error'].includes(job.status));
+  $('productionMonitor').classList.toggle('failed',job.status==='error');
+  $('productionMonitor').classList.toggle('complete',job.status==='completed');
+}
+async function createClips(){
+  const url=$('sourceUrl').value.trim(),len=+$('clipLength').value,max=+$('maxClips').value,folder=$('jobFolder').value.trim();
+  if(!/^https?:\/\//i.test(url)){setProductionUI({status:'error',phase:'URL inválida',message:'Introduce una URL válida.',progress:0});return}
+  const btn=$('createClipsBtn');btn.disabled=true;btn.innerHTML='<span>◌</span> Preparando motor…';
+  setProductionUI({status:'downloading',phase:'Enviando al motor',message:'CLIPRD está creando tu trabajo…',progress:3});
+  try{
+    const r=await fetch(AGENT+'/auto-clips',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:len,maxClips:max})});
+    const x=await r.json();
+    if(!r.ok||!x.jobId)throw Error(x.error||'El motor no pudo iniciar el trabajo.');
+    const jobId=x.jobId;
+    const poll=async()=>{
+      const jr=await fetch(AGENT+'/jobs/'+encodeURIComponent(jobId),{cache:'no-store'});
+      const job=await jr.json();if(!jr.ok)throw Error(job.error||'No se pudo leer el estado del trabajo.');
+      setProductionUI(job);
+      if(!['completed','error'].includes(job.status)){setTimeout(()=>poll().catch(fail),700);return}
+      if(job.status==='error')throw Error(job.error||job.message);
+      const now=Date.now(),sourceTitle=(url.split('/').pop()||'Contenido original').replace(/[-_]/g,' ');
+      const items=(job.clips||[]).map((o,i)=>{const start=Number(o.start)||0,end=Number(o.end)||0,copy=autoCopy({...o,start,end},sourceTitle);const thumbs=Array.isArray(o.thumbnails)?o.thumbnails.filter(Boolean).slice(0,3):[];const cover=o.coverUrl||o.cover||thumbs[0]||makeFallbackCover(copy.title);return ensureClipMeta({name:o.title||copy.title||('Clip '+(i+1)),title:copy.title,url:o.url,coverUrl:cover,description:copy.description,hashtags:copy.hashtags,clipTranscript:o.clipTranscript||o.transcript||'',thumbnails:thumbs,created:o.created||now+i,start,end,folder:folder||undefined,viralScore:o.viralScore||o.score})});
+      if(!items.length)throw Error('El motor terminó sin devolver clips.');
+      setLib([...items,...getLib()]);
+      btn.disabled=false;btn.innerHTML='<span>✦</span> Iniciar producción';
+      setTimeout(()=>showView('library'),900);
+    };
+    const fail=(e)=>{btn.disabled=false;btn.innerHTML='<span>✦</span> Reintentar producción';setProductionUI({status:'error',phase:'Producción detenida',message:'❌ '+e.message,progress:100})};
+    poll().catch(fail);
+  }catch(e){btn.disabled=false;btn.innerHTML='<span>✦</span> Reintentar producción';setProductionUI({status:'error',phase:'No se pudo iniciar',message:'❌ '+e.message,progress:0})}
+}
 function youtubeId(url){try{const u=new URL(url);if(u.hostname.includes('youtu.be'))return u.pathname.split('/').filter(Boolean)[0];if(u.searchParams.get('v'))return u.searchParams.get('v');const p=u.pathname.match(/\/(live|embed|shorts)\/([^/?]+)/);return p?p[2]:null}catch{return null}}
 function openLive(){
   const id=youtubeId($('liveUrl').value.trim());
