@@ -219,7 +219,6 @@ async function resolveSource(sourceUrl, report = () => {}, options = {}) {
     "--newline",
     "--socket-timeout", "30",
     "--no-cache-dir",
-    ...(options.live ? ["--live-from-start"] : []),
     "-o", outputTemplate,
     "--print", "after_move:filepath"
   ];
@@ -486,55 +485,58 @@ app.post("/live/start", (req, res) => {
   liveState.sourceUrl = req.body?.sourceUrl || null;
   liveState.markedMoments = [];
   liveState.generatedClips = [];
+  liveState.jobId = null;
+  liveState.lastError = null;
 
-  res.json({
-    ok: true,
-    running: true,
-    startedAt: liveState.startedAt,
-    sourceUrl: liveState.sourceUrl
-  });
+  res.json({ ok:true, running:true, active:true, startedAt:liveState.startedAt, sourceUrl:liveState.sourceUrl });
 });
 
 app.get("/live/status", (_req, res) => {
+  const job = liveState.jobId ? jobs.get(liveState.jobId) : null;
   res.json({
-    ok: true,
-    running: liveState.running,
-    startedAt: liveState.startedAt,
-    sourceUrl: liveState.sourceUrl,
-    markedMoments: liveState.markedMoments,
-    clips: liveState.generatedClips
+    ok:true,
+    running:liveState.running,
+    active:liveState.running,
+    stopping:!!job && !["completed","error"].includes(job.status),
+    startedAt:liveState.startedAt,
+    sourceUrl:liveState.sourceUrl,
+    markedMoments:liveState.markedMoments || [],
+    clips:liveState.generatedClips || [],
+    outputs:liveState.generatedClips || [],
+    jobId:liveState.jobId || null,
+    job:job || null,
+    lastError:liveState.lastError || null
   });
 });
 
-app.post("/live/stop", async (req, res) => {
-  try {
-    const sourceUrl = req.body?.sourceUrl || liveState.sourceUrl;
-    const clipLength = req.body?.clipLength || 45;
-    const maxClips = req.body?.maxClips || Math.max(1, liveState.markedMoments.length || 3);
+app.post("/live/stop", (req, res) => {
+  const sourceUrl = req.body?.sourceUrl || liveState.sourceUrl;
+  const clipLength = req.body?.clipLength || 45;
+  const maxClips = req.body?.maxClips || Math.max(1, (liveState.markedMoments || []).length || 3);
+  if (!sourceUrl) return res.status(400).json({ ok:false, error:"No hay una fuente para procesar." });
 
-    let clips = [];
-    if (sourceUrl) {
-      clips = await buildClips({ sourceUrl, clipLength, maxClips, liveMode: true });
+  const job = createJob();
+  const report = jobReporter(job);
+  liveState.jobId = job.id;
+  liveState.running = false;
+  liveState.lastError = null;
+
+  res.status(202).json({ ok:true, jobId:job.id, status:job.status });
+
+  (async () => {
+    try {
+      // Usa EXACTAMENTE la misma ruta de descarga que Auto Clip.
+      report({ status:"downloading", phase:"Live Radar · preparando fuente", message:"Descargando la fuente del radar…", progress:5 });
+      const clips = await buildClips({ sourceUrl, clipLength, maxClips, liveMode:false }, report);
+      liveState.generatedClips = clips;
+      report({ status:"completed", phase:"Live Radar completado", message:`${clips.length} cortes listos en Biblioteca.`, progress:100, clips });
+    } catch (error) {
+      console.error("LIVE STOP ERROR:", error);
+      liveState.lastError = error.message || String(error);
+      report({ status:"error", phase:"Live Radar detenido", message:liveState.lastError, error:liveState.lastError, progress:100 });
     }
-
-    liveState.running = false;
-    liveState.generatedClips = clips;
-
-    res.json({
-      ok: true,
-      running: false,
-      clips
-    });
-  } catch (error) {
-    console.error("LIVE STOP ERROR:", error);
-    liveState.running = false;
-    res.status(500).json({
-      ok: false,
-      error: error.message || "No se pudieron generar los clips del Live Radar."
-    });
-  }
+  })();
 });
-
 // NUEVO ENDPOINT PARA EL EDITOR
 app.post("/export", async (req, res) => {
   try {
