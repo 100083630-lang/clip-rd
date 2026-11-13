@@ -20,14 +20,11 @@ for (const dir of [clipsDir, thumbsDir, downloadsDir]) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-app.use(cors({
-  origin: ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "*"],
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
-}));
+app.use(cors({ origin: true, methods: ["GET", "POST", "OPTIONS"], allowedHeaders: ["Content-Type"] }));
 app.use(express.json({ limit: "2mb" }));
 app.use("/clips", express.static(clipsDir));
 app.use("/thumbs", express.static(thumbsDir));
+app.use(express.static(__dirname));
 
 const liveState = {
   running: false,
@@ -234,9 +231,9 @@ async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3 }) {
   return results;
 }
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true });
-});
+const healthPayload = () => ({ ok: true, status: "online", engine: "cliprd", port: PORT });
+app.get("/health", (_req, res) => res.json(healthPayload()));
+app.get("/api/health", (_req, res) => res.json(healthPayload()));
 
 app.post("/auto-clips", async (req, res) => {
   try {
@@ -369,4 +366,5 @@ app.post("/export", async (req, res) => {
 app.listen(PORT, "127.0.0.1", () => {
   console.log(`CLIPRD Agent listo en http://127.0.0.1:${PORT}`);
   console.log(`Health: http://127.0.0.1:${PORT}/health`);
+  console.log(`API Health: http://127.0.0.1:${PORT}/api/health`);
 });
