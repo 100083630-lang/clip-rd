@@ -532,17 +532,27 @@ function renderLibrary(){const a=getLib().map(ensureClipMeta),g=$('libraryGrid')
 async function deleteClipById(id){
   if(!id)return;
   const clip=getLib().find(x=>String(x.id)===String(id));
-  if(!confirm('¿Eliminar este clip? Esta acción borrará el archivo y sus previsualizaciones.'))return;
+  if(!clip)return;
+  if(!confirm('¿Eliminar este clip? Esta acción borrará el video y sus previsualizaciones.'))return;
+  const btn=[...document.querySelectorAll('.danger')].find(b=>b.getAttribute('onclick')?.includes(String(id)));
+  if(btn){btn.disabled=true;btn.textContent='Eliminando…'}
   try{
-    const r=await fetch(AGENT+'/clips/'+encodeURIComponent(id),{method:'DELETE'});
-    const x=await r.json().catch(()=>({}));
+    let key=String(id);
+    if(!key&&clip.url)key=String(clip.url).split('/').pop().replace(/\.[^.]+$/,'');
+    let r=await fetch(AGENT+'/clips/'+encodeURIComponent(key),{method:'DELETE'});
+    let x=await r.json().catch(()=>({}));
+    if(!r.ok && clip.url){
+      const filename=decodeURIComponent(String(clip.url).split('/').pop().split('?')[0]);
+      r=await fetch(AGENT+'/clips/'+encodeURIComponent(filename),{method:'DELETE'});
+      x=await r.json().catch(()=>({}));
+    }
     if(!r.ok)throw Error(x.error||'No se pudo eliminar el archivo del motor.');
     setLib(getLib().filter(x=>String(x.id)!==String(id)));
   }catch(e){
-    if(clip&&confirm('No se pudo borrar el archivo físico: '+e.message+'\n\n¿Quieres quitarlo solamente de la Biblioteca?')){
+    if(confirm('El motor no pudo localizar el archivo: '+e.message+'\n\n¿Quieres quitar este clip solamente de la Biblioteca?')){
       setLib(getLib().filter(x=>String(x.id)!==String(id)));
     }
-  }
+  }finally{if(btn&&!document.body.contains(btn)){/* renderLibrary reemplazó la tarjeta */}else if(btn){btn.disabled=false;btn.textContent='🗑 Eliminar'}}
 }
 function filterLibrary(){libraryQuery=(($('librarySearch')?.value)||($('globalSearch')?.value)||'').trim();renderLibrary()}function setFolder(f){activeFolder=f;renderLibrary()}
 function playClip(i){const x=getLib()[i],v=[...document.querySelectorAll('video')].find(z=>z.getAttribute('src')===x.url);if(v){v.controls=true;v.paused?v.play().catch(()=>{}):v.pause();v.scrollIntoView({behavior:'smooth',block:'center'})}}
