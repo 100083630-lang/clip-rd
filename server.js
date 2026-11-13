@@ -85,6 +85,25 @@ async function getDuration(filePath) {
   return duration;
 }
 
+function findDownloadedFile(jobId) {
+  const prefix = `source-${jobId}.`;
+  const candidates = fs.readdirSync(downloadsDir)
+    .filter(name => name.startsWith(prefix) && /\.(mp4|mkv|webm|mov|m4v)$/i.test(name))
+    .map(name => path.join(downloadsDir, name))
+    .filter(file => {
+      try { return fs.existsSync(file) && fs.statSync(file).size > 0; }
+      catch { return false; }
+    })
+    .sort((a, b) => fs.statSync(b).size - fs.statSync(a).size);
+  return candidates[0] || null;
+}
+
+async function assertLocalTools() {
+  await run("yt-dlp", ["--version"]);
+  await run("ffmpeg", ["-version"]);
+  await run("ffprobe", ["-version"]);
+}
+
 async function resolveSource(sourceUrl) {
   if (!sourceUrl) throw new Error("sourceUrl es obligatorio.");
 
@@ -94,57 +113,72 @@ async function resolveSource(sourceUrl) {
     return localPath;
   }
 
+  await assertLocalTools();
+
   const jobId = randomUUID().slice(0, 8);
   const outputTemplate = path.join(downloadsDir, `source-${jobId}.%(ext)s`);
   const cookiesPath = path.join(__dirname, "cookies.txt");
+  const hasCookies = fs.existsSync(cookiesPath);
+  const isYouTube = /(^|\\.)youtube\\.com|youtu\\.be/i.test(new URL(sourceUrl).hostname);
+
   const common = [
     "--no-playlist",
     "--newline",
-    "--retries", "3",
-    "--fragment-retries", "3",
+    "--retries", "5",
+    "--fragment-retries", "5",
     "--socket-timeout", "30",
+    "--concurrent-fragments", "1",
     "--merge-output-format", "mp4",
+    "--no-part",
     "-o", outputTemplate,
     "--print", "after_move:filepath"
   ];
 
-  const attempts = [
-    { name: "auto", args: [] },
-    { name: "android", args: ["--extractor-args", "youtube:player_client=android"] },
-    { name: "ios", args: ["--extractor-args", "youtube:player_client=ios"] },
-    { name: "format18", args: ["-f", "18/best"] }
+  const attempts = isYouTube ? [
+    { name: "youtube-web", args: ["--extractor-args", "youtube:player_client=web"] },
+    ...(hasCookies ? [{ name: "youtube-web-cookies", cookies: true, args: ["--extractor-args", "youtube:player_client=web"] }] : []),
+    { name: "youtube-mweb", args: ["--extractor-args", "youtube:player_client=mweb"] },
+    { name: "youtube-android", args: ["--extractor-args", "youtube:player_client=android"] },
+    { name: "youtube-ios", args: ["--extractor-args", "youtube:player_client=ios"] },
+    { name: "youtube-auto", args: [] }
+  ] : [
+    { name: "auto", args: [] }
   ];
 
-  let lastError = null;
+  const errors = [];
 
   for (const attempt of attempts) {
     try {
-      const args = [...common];
-      if (fs.existsSync(cookiesPath) && attempt.name === "auto") {
-        args.push("--cookies", cookiesPath);
-      }
-      args.push(...attempt.args, sourceUrl);
+      const args = [...common, ...attempt.args];
+      if (attempt.cookies) args.push("--cookies", cookiesPath);
 
       console.log(`YT-DLP: intento ${attempt.name}…`);
-      const result = await run("yt-dlp", args);
-      const printed = (result.stdout || "").trim().split(/\r?\n/).filter(Boolean);
-      const printedPath = printed.find(line => fs.existsSync(line));
+      const result = await run("yt-dlp", args.concat(sourceUrl));
+      const printed = (result.stdout || "").trim().split(/\\r?\\n/).filter(Boolean);
+      const printedPath = printed.find(line => {
+        try { return fs.existsSync(line) && fs.statSync(line).size > 0; }
+        catch { return false; }
+      });
       if (printedPath) return printedPath;
 
-      const candidates = fs.readdirSync(downloadsDir)
-        .filter(name => name.startsWith(`source-${jobId}.`) && /\.(mp4|mkv|webm|mov|m4v)$/i.test(name))
-        .map(name => path.join(downloadsDir, name))
-        .filter(file => fs.existsSync(file));
-      if (candidates.length) return candidates[0];
+      const found = findDownloadedFile(jobId);
+      if (found) return found;
 
-      throw new Error("yt-dlp terminó pero no se encontró el archivo descargado.");
+      throw new Error("yt-dlp terminó sin producir un archivo de video válido.");
     } catch (error) {
-      lastError = error;
-      console.error(`YT-DLP falló en ${attempt.name}:`, error.message || error);
+      const message = error?.message || String(error);
+      errors.push(`${attempt.name}: ${message}`);
+      console.error(`YT-DLP falló en ${attempt.name}:`, message);
     }
   }
 
-  throw new Error(`No se pudo descargar el video tras los fallbacks disponibles. ${lastError?.message || ""}`);
+  const diagnostic = [
+    "No se pudo obtener un stream descargable.",
+    ...errors.slice(-3),
+    "Verifica que yt-dlp esté actualizado y que Node, ffmpeg y ffprobe estén disponibles en PATH."
+  ].join("\\n");
+
+  throw new Error(diagnostic);
 }
 function makeMetadata(index, start, end, sourceTitle) {
   const title = `${sourceTitle} · Clip ${index + 1}`;
