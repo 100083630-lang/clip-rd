@@ -170,7 +170,8 @@ function runYtDlp(args, { timeoutMs = 60000, onProgress = () => {} } = {}) {
 
     const consume = data => {
       const text = data.toString();
-      lastActivity = Date.now();
+      // Cualquier salida real mantiene vivo el watchdog; "_" sin salida útil no.
+      if (text.trim() && text.trim() !== "_") lastActivity = Date.now();
       const match = text.match(/\[download\]\s+([0-9]+(?:\.[0-9]+)?)%/i);
       if (match) onProgress(Number(match[1]));
     };
@@ -210,29 +211,24 @@ async function resolveSource(sourceUrl, report = () => {}) {
   const hostname = new URL(sourceUrl).hostname.toLowerCase();
   const isYouTube = hostname === "youtu.be" || hostname.endsWith(".youtu.be") || hostname === "youtube.com" || hostname.endsWith(".youtube.com");
 
+  // PERFIL EXACTO VALIDADO EN WINDOWS: se intenta primero sin banderas extra
+  // que puedan alterar la selección de formatos de YouTube.
   const common = [
     "--no-playlist",
     "--newline",
     "--socket-timeout", "30",
-    "--no-cookies",
     "--no-cache-dir",
-    "--retries", "2",
-    "--fragment-retries", "2",
-    "--file-access-retries", "1",
-    "--concurrent-fragments", "1",
-    "--no-part",
-    "-f", "18/best[height<=720]",
     "-o", outputTemplate,
     "--print", "after_move:filepath"
   ];
 
   const attempts = isYouTube ? [
-    { name: "android", args: ["--extractor-args", "youtube:player_client=android"] },
-    { name: "ios", args: ["--extractor-args", "youtube:player_client=ios"] },
-    { name: "tv_embedded", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
-    { name: "web_safari", args: ["--extractor-args", "youtube:player_client=web_safari"] }
-  ] : [{ name: "auto", args: [] }];
-
+    // Primer intento = equivalente al comando que el usuario comprobó manualmente.
+    { name: "android", format: "18", args: ["--extractor-args", "youtube:player_client=android"] },
+    { name: "ios", format: "18/best[height<=720]", args: ["--extractor-args", "youtube:player_client=ios"] },
+    { name: "tv_embedded", format: "18/best[height<=720]", args: ["--extractor-args", "youtube:player_client=tv_embedded"] },
+    { name: "web_safari", format: "18/best[height<=720]", args: ["--extractor-args", "youtube:player_client=web_safari"] }
+  ] : [{ name: "auto", format: "best[height<=720]/best", args: [] }];
   const errors = [];
 
   for (let index = 0; index < attempts.length; index++) {
@@ -254,7 +250,8 @@ async function resolveSource(sourceUrl, report = () => {}) {
     console.log(`YT-DLP [${jobId}] INTENTO ${attemptNumber}/${attempts.length} -> ${attempt.name}`);
 
     try {
-      const result = await runYtDlp([...common, ...attempt.args, sourceUrl], {
+      // Orden deliberado: extractor + formato antes de la URL, igual que el comando probado.
+      const result = await runYtDlp([...common, ...attempt.args, "-f", attempt.format, sourceUrl], {
         timeoutMs: 60000,
         onProgress: percent => {
           const base = 8 + index * 8;
@@ -407,15 +404,32 @@ app.get("/api/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/diagnostics", async (_req, res) => { try { const tools = await assertLocalTools(); res.json({ ...healthPayload(), tools }); } catch (error) { res.status(500).json({ ok:false, status:"degraded", error:error.message || String(error) }); } });
 
 app.delete("/clips/:id", (req, res) => {
-  const id = sanitizeName(req.params.id);
-  const files = fs.readdirSync(clipsDir).filter(name => path.parse(name).name === id);
-  if (!files.length) return res.status(404).json({ ok: false, error: "Clip no encontrado." });
+  try {
+    const raw = decodeURIComponent(String(req.params.id || ""));
+    const id = path.basename(raw).replace(/\.(mp4|webm|mkv|mov)$/i, "");
+    if (!id || id.includes("..")) return res.status(400).json({ ok: false, error: "Identificador de clip inválido." });
 
-  for (const name of files) fs.rmSync(path.join(clipsDir, name), { force: true });
-  for (const name of fs.readdirSync(thumbsDir)) {
-    if (name.startsWith(id + "-")) fs.rmSync(path.join(thumbsDir, name), { force: true });
+    const files = fs.readdirSync(clipsDir).filter(name => {
+      const stem = path.parse(name).name;
+      return stem === id || name === raw || stem.endsWith("-" + id);
+    });
+
+    // También permite borrar por URL/filename aunque la UI tenga metadata antigua.
+    if (!files.length) return res.status(404).json({ ok: false, error: "Clip no encontrado en el disco local." });
+
+    const removed = [];
+    for (const name of files) {
+      fs.rmSync(path.join(clipsDir, name), { force: true });
+      removed.push(name);
+      const stem = path.parse(name).name;
+      for (const thumb of fs.readdirSync(thumbsDir)) {
+        if (thumb.startsWith(stem + "-")) fs.rmSync(path.join(thumbsDir, thumb), { force: true });
+      }
+    }
+    res.json({ ok: true, id, deleted: removed });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || String(error) });
   }
-  res.json({ ok: true, id, deleted: files });
 });
 
 app.get("/jobs/:id", (req, res) => {
