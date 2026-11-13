@@ -26,6 +26,19 @@ app.use("/clips", express.static(clipsDir));
 app.use("/thumbs", express.static(thumbsDir));
 app.use(express.static(__dirname));
 
+const jobs = new Map();
+
+function createJob() {
+  const id = randomUUID().slice(0, 12);
+  const job = { id, status: "queued", phase: "En cola", message: "Preparando el trabajo…", progress: 2, createdAt: new Date().toISOString(), clips: [], error: null };
+  jobs.set(id, job);
+  return job;
+}
+function updateJob(job, patch) { Object.assign(job, patch, { updatedAt: new Date().toISOString() }); }
+function jobReporter(job) {
+  return (patch) => updateJob(job, patch);
+}
+
 const liveState = {
   running: false,
   startedAt: null,
@@ -128,7 +141,7 @@ async function assertLocalTools() {
   };
 }
 
-async function resolveSource(sourceUrl) {
+async function resolveSource(sourceUrl, report = () => {}) {
   if (!sourceUrl) throw new Error("sourceUrl es obligatorio.");
 
   if (!isHttpUrl(sourceUrl)) {
@@ -137,6 +150,7 @@ async function resolveSource(sourceUrl) {
     return localPath;
   }
 
+  report({ status: "downloading", phase: "Preparando descarga", message: "Verificando herramientas locales…", progress: 8 });
   await assertLocalTools();
 
   const jobId = randomUUID().slice(0, 8);
@@ -184,6 +198,7 @@ async function resolveSource(sourceUrl) {
       const args = [...common, ...attempt.args];
       if (attempt.cookies) args.push("--cookies", cookiesPath);
 
+      report({ status: "downloading", phase: "Descargando fuente", message: `Conectando con ${attempt.name}…`, progress: Math.min(42, 12 + attempts.indexOf(attempt) * 4), client: attempt.name });
       console.log(`YT-DLP [${jobId}] → ${attempt.name}`);
       const result = await run("yt-dlp", [...args, sourceUrl]);
 
@@ -195,6 +210,7 @@ async function resolveSource(sourceUrl) {
 
       const found = printedPath || findDownloadedFile(jobId);
       if (found) {
+        report({ status: "analyzing", phase: "Fuente lista", message: `Descarga completada con ${attempt.name}. Analizando video…`, progress: 45, client: attempt.name });
         console.log(`YT-DLP [${jobId}] ✓ descargado con ${attempt.name}: ${found}`);
         return found;
       }
@@ -243,6 +259,7 @@ async function createThumbnails(clipPath, clipName, duration) {
     const thumbName = `${clipName}-${i + 1}.jpg`;
     const thumbPath = path.join(thumbsDir, thumbName);
 
+    report({ status: "processing", phase: `Creando clip ${index + 1} de ${clipCount}`, message: `Procesando el corte ${index + 1}/${clipCount}…`, progress: 52 + Math.round((index / Math.max(1, clipCount)) * 35), currentClip: index + 1, totalClips: clipCount });
     await run("ffmpeg", [
       "-y",
       "-ss", String(seconds),
@@ -258,8 +275,9 @@ async function createThumbnails(clipPath, clipName, duration) {
   return thumbnails;
 }
 
-async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3 }) {
-  const sourcePath = await resolveSource(sourceUrl);
+async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3 }, report = () => {}) {
+  const sourcePath = await resolveSource(sourceUrl, report);
+  report({ status: "analyzing", phase: "Analizando video", message: "Leyendo duración y preparando cortes…", progress: 50 });
   const sourceDuration = await getDuration(sourcePath);
 
   const safeClipLength = Math.min(Math.max(Number(clipLength) || 45, 5), 600);
@@ -297,6 +315,7 @@ async function buildClips({ sourceUrl, clipLength = 45, maxClips = 3 }) {
     ]);
 
     const clipDuration = await getDuration(outputPath);
+    report({ status: "processing", phase: `Finalizando clip ${index + 1} de ${clipCount}`, message: "Generando previsualizaciones…", progress: 58 + Math.round(((index + 0.65) / Math.max(1, clipCount)) * 32), currentClip: index + 1, totalClips: clipCount });
     const thumbnails = await createThumbnails(outputPath, clipName, clipDuration);
     const metadata = makeMetadata(index, start, end, baseTitle);
 
@@ -322,22 +341,29 @@ app.get("/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/health", (_req, res) => res.json(healthPayload()));
 app.get("/api/diagnostics", async (_req, res) => { try { const tools = await assertLocalTools(); res.json({ ...healthPayload(), tools }); } catch (error) { res.status(500).json({ ok:false, status:"degraded", error:error.message || String(error) }); } });
 
-app.post("/auto-clips", async (req, res) => {
-  try {
-    const clips = await buildClips(req.body || {});
-    res.json({
-      ok: true,
-      clips,
-      outputs: clips,
-      count: clips.length
-    });
-  } catch (error) {
-    console.error("AUTO-CLIPS ERROR:", error);
-    res.status(500).json({
-      ok: false,
-      error: error.message || "No se pudieron generar los clips."
-    });
-  }
+app.get("/jobs/:id", (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ ok: false, error: "Trabajo no encontrado." });
+  res.json({ ok: true, ...job });
+});
+
+app.post("/auto-clips", (req, res) => {
+  const job = createJob();
+  const report = jobReporter(job);
+
+  // Respuesta inmediata: la interfaz puede mostrar progreso real por fases sin congelarse.
+  res.status(202).json({ ok: true, jobId: job.id, status: job.status });
+
+  (async () => {
+    try {
+      report({ status: "downloading", phase: "Iniciando motor", message: "El motor local aceptó el trabajo.", progress: 5 });
+      const clips = await buildClips(req.body || {}, report);
+      report({ status: "completed", phase: "Completado", message: `${clips.length} clips listos en tu Biblioteca.`, progress: 100, clips });
+    } catch (error) {
+      console.error("AUTO-CLIPS ERROR:", error);
+      report({ status: "error", phase: "Error", message: error.message || "No se pudieron generar los clips.", error: error.message || String(error), progress: 100 });
+    }
+  })();
 });
 
 app.post("/live/start", (req, res) => {
