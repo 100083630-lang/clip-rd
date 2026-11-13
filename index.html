@@ -479,6 +479,8 @@ body:before{display:none}
       <div class="live-card-title"><div><span class="live-icon">⌁</span><div><b>Centro de control</b><small>Configura tu monitor inteligente</small></div></div><span class="live-secure">LOCAL</span></div>
       <label>URL de YouTube Live propio o autorizado</label>
       <input id="liveUrl" placeholder="Pega la URL del Live">
+      <label style="margin-top:12px">Fallback: archivo local del LIVE (MP4/MKV/WEBM/TS)</label>
+      <input id="liveLocalPath" placeholder="Ej.: C:\\Users\\DELL\\Videos\\mi-live.mp4">
       <div class="row live-settings">
         <div style="flex:1"><label>Duración del clip</label><input id="liveClipLength" type="number" value="45" min="10" max="180"></div>
         <div style="flex:1"><label>Máximo por segmento</label><input id="liveMaxClips" type="number" value="2" min="1" max="4"></div>
@@ -633,7 +635,30 @@ function renderMarks(){const a=getMarks(),box=$('liveMarks');if(box)box.innerHTM
 function markLiveMoment(){const mark={time:Math.floor((Date.now()-(window.liveStartedAt||Date.now()))/1000),created:Date.now(),label:'Momento marcado'};setMarks([...getMarks(),mark]);$('liveStatus').textContent='⚡ Momento guardado: '+formatTime(mark.time)}
 function addLiveOutputs(outputs){if(!Array.isArray(outputs)||!outputs.length)return;const old=getLib(),known=new Set(old.map(x=>x.url)),fresh=outputs.filter(o=>o.url&&!known.has(o.url)).map((o,i)=>ensureClipMeta({...o,name:o.title||('🔴 Live Clip '+(i+1)),created:o.created||Date.now(),folder:'🔴 Live'}));if(fresh.length)setLib([...fresh,...old])}
 async function pollLive(){try{const r=await fetch(AGENT+'/live/status',{cache:'no-store'});const x=await r.json();$('liveState').textContent=x.stopping?'🟠 DETENIENDO':(x.active?'🔴 RADAR ACTIVO':'STANDBY');$('liveMeta').textContent=x.stopping?' · finalizando último corte':(x.active?' · '+(x.processedSegments||0)+' cortes automáticos':' · monitor detenido');$('liveEvents').innerHTML=(x.events||[]).slice(0,6).map(e=>'• '+new Date(e.time).toLocaleTimeString()+' — '+escapeHtml(e.message)).join('<br>')||'Esperando eventos…';if(x.lastError)$('liveStatus').textContent='⚠️ '+x.lastError;addLiveOutputs(x.outputs)}catch{$('liveState').textContent='MOTOR NO DISPONIBLE'}}
-async function startLiveAuto(){const url=$('liveUrl').value.trim();if(!/^https?:\/\//i.test(url)){$('liveStatus').textContent='❌ Introduce una URL válida.';return}openLive();window.liveStartedAt=Date.now();try{const r=await fetch(AGENT+'/live/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sourceUrl:url,clipLength:45,maxClips:1})}),x=await r.json();if(!r.ok)throw Error(x.error||'No se pudo iniciar');$('liveStatus').textContent='🟢 Radar activo. Generando un corte automático cada 45 segundos.';clearInterval(liveTimer);liveTimer=setInterval(pollLive,5000);pollLive()}catch(e){$('liveStatus').textContent='❌ '+e.message}}
+async function startLiveAuto(){
+  const url=$('liveUrl').value.trim();
+  const localPath=($('liveLocalPath')?.value||'').trim();
+  if(!/^https?:\/\//i.test(url)&&!localPath){
+    $('liveStatus').textContent='❌ Pega una URL válida o indica un archivo local.';
+    return;
+  }
+  openLive();
+  window.liveStartedAt=Date.now();
+  try{
+    const body=localPath?{localPath}:{sourceUrl:url};
+    const r=await fetch(AGENT+'/live/start',{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)
+    });
+    const x=await r.json();
+    if(!r.ok)throw Error(x.error||'No se pudo iniciar');
+    $('liveStatus').textContent=localPath
+      ?'🟢 Fuente local lista. Pulsa detener para analizar y generar cortes.'
+      :'🟡 '+(x.message||'Conectando Live Buffer…');
+    clearInterval(liveTimer);
+    liveTimer=setInterval(pollLive,2500);
+    pollLive();
+  }catch(e){$('liveStatus').textContent='❌ '+e.message}
+}
 async function stopLiveAuto(){
   const btn=$('liveStopBtn');
   if(btn&&btn.dataset.stopping==='1')return;
