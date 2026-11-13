@@ -533,23 +533,28 @@ async function deleteClipByIndex(index){
   const lib=getLib(), clip=lib[index];
   if(!clip)return;
   if(!confirm('¿Eliminar este clip? Esta acción borrará el video y sus previsualizaciones.'))return;
-  const keys=[];
-  if(clip.id)keys.push(String(clip.id));
-  if(clip.url){try{keys.push(decodeURIComponent(new URL(clip.url).pathname.split('/').pop()||''));}catch{}}
+
+  const btn=[...document.querySelectorAll('.danger')].find(b=>b.getAttribute('onclick')?.includes("deleteClipByIndex("+index+")"));
+  if(btn){btn.disabled=true;btn.textContent='Eliminando…';}
+
   try{
-    let ok=false,lastError='';
-    for(const key of [...new Set(keys.filter(Boolean))]){
-      const r=await fetch(AGENT+'/clips/'+encodeURIComponent(key),{method:'DELETE'});
-      const data=await r.json().catch(()=>({}));
-      if(r.ok){ok=true;break}
-      lastError=data.error||('HTTP '+r.status);
-    }
-    if(!ok)throw Error(lastError||'No se pudo localizar el archivo en el motor local.');
-    lib.splice(index,1);setLib(lib);alert('Clip eliminado correctamente.');
+    const r=await fetch(AGENT+'/clips/delete',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:clip.id||'',url:clip.url||'',filename:clip.name||''})
+    });
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(data.error||('HTTP '+r.status));
+    lib.splice(index,1);
+    setLib(lib);
+    alert('Clip eliminado correctamente.');
   }catch(e){
-    if(confirm('No se pudo borrar el archivo físico: '+e.message+'\n\n¿Quieres quitarlo solamente de la Biblioteca?')){
-      lib.splice(index,1);setLib(lib);
+    if(confirm('No se pudo borrar el archivo físico: '+e.message+'\n\n¿Quieres quitar este clip solamente de la Biblioteca?')){
+      lib.splice(index,1);
+      setLib(lib);
     }
+  }finally{
+    if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent='🗑 Eliminar';}
   }
 }
 function filterLibrary(){libraryQuery=(($('librarySearch')?.value)||($('globalSearch')?.value)||'').trim();renderLibrary()}function setFolder(f){activeFolder=f;renderLibrary()}
