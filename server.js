@@ -60,38 +60,61 @@ function parsePercent(text){
 // No descargamos componentes remotos al iniciar un LIVE: en Windows eso puede quedar
 // esperando la red indefinidamente. yt-dlp usa el runtime local disponible y cada
 // intento tiene límites de red/reintentos para fallar rápido y pasar al fallback.
-const YTDLP_BASE_ARGS=[
-  "--ignore-config","--no-playlist","--newline",
-  "--socket-timeout","30","--retries","10","--fragment-retries","20",
-  "--retry-sleep","1","--retry-sleep","fragment:exp=1:12",
-  "--concurrent-fragments","1","--no-progress"
-];
-
 const YTDLP_NETWORK_ARGS=[
-  "--ignore-config","--no-playlist","--force-ipv4",
-  "--socket-timeout","30","--retries","3","--fragment-retries","5",
-  "--retry-sleep","http:exp=1:4","--retry-sleep","fragment:exp=1:6"
+  "--ignore-config","--no-playlist","--newline",
+  "--socket-timeout","30","--retries","5","--fragment-retries","10",
+  "--retry-sleep","http:exp=1:6","--retry-sleep","fragment:exp=1:10",
+  "--concurrent-fragments","1"
 ];
 
 async function download(source,outFile){
-  // Progresivo primero: para el cortador es más importante una descarga estable
-  // que separar audio/video y depender de dos conexiones DASH simultáneas.
-  const formats=[
-    "best[ext=mp4][protocol!*=dash]/best[ext=mp4]/best",
-    "bestvideo*+bestaudio/best",
-    "best"
+  // AUTO CLIP usa perfiles separados. Nunca usamos "-f best": yt-dlp advierte
+  // que fuerza un formato premezclado y puede desaparecer según el cliente de YouTube.
+  const profiles=[
+    {name:"Automático",args:[]},
+    {name:"TV combinado",args:["--extractor-args","youtube:player_client=tv","-f","bv*+ba/b"]},
+    {name:"Android combinado",args:["--extractor-args","youtube:player_client=android","-f","bv*+ba/b"]},
+    {name:"MP4 compatible",args:["--extractor-args","youtube:player_client=ios","-f","bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b"]}
   ];
   let last;
-  for(const format of formats){
+  for(let i=0;i<profiles.length;i++){
+    const profile=profiles[i];
     try{
-      state.job.message="Descargando video…"; state.job.percent=0;
-      await run("yt-dlp",[...YTDLP_NETWORK_ARGS,...YTDLP_BASE_ARGS,"-f",format,"--merge-output-format","mp4","--newline","-o",outFile,source],{timeout:10*60*1000,
-        onStderr:t=>{const p=parsePercent(t);if(p!==null){state.job.percent=p;state.job.message="Descargando video: "+p+"%"}}
+      state.job.stage="download";
+      state.job.message="Conectando con YouTube ("+profile.name+")…";
+      state.job.percent=0;
+      console.log("AUTO CLIP yt-dlp intento",i+1,"/",profiles.length,"-",profile.name);
+      await run("yt-dlp",[
+        ...YTDLP_NETWORK_ARGS,
+        ...profile.args,
+        "--merge-output-format","mp4","--newline",
+        "-o",outFile,source
+      ],{timeout:10*60*1000,
+        onStdout:t=>{
+          const p=parsePercent(t);
+          if(p!==null){state.job.percent=p;state.job.message="Descargando video: "+p+"%";}
+        },
+        onStderr:t=>{
+          const p=parsePercent(t);
+          if(p!==null){state.job.percent=p;state.job.message="Descargando video: "+p+"%";}
+          if(/ERROR:|WARNING:/i.test(t)) console.log("AUTO CLIP yt-dlp:",t.trim());
+        }
       });
-      state.job.percent=100; return;
-    }catch(e){last=e}
+      if(!isUsable(outFile,10000)) throw new Error("yt-dlp terminó sin crear un archivo utilizable");
+      state.job.percent=100;
+      state.job.message="Video descargado";
+      return;
+    }catch(e){
+      last=e;
+      console.error("AUTO CLIP intento",i+1,"falló:",e.message.slice(-600));
+      if(existsSync(outFile)) try{unlinkSync(outFile)}catch{}
+      if(i<profiles.length-1){
+        state.job.message="Formato no disponible. Probando otro cliente de YouTube…";
+        await new Promise(r=>setTimeout(r,1000));
+      }
+    }
   }
-  throw last||new Error("No se pudo descargar el video");
+  throw last||new Error("No se pudo descargar el video desde YouTube");
 }
 function findLiveRecording(s){
   return s.recording&&existsSync(s.recording)?s.recording:null;
@@ -104,7 +127,7 @@ function durationOf(file){
   }catch{return 0}
 }
 
-app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.2.0",tools:checkTools(),live:{active:state.live.active,reconnects:state.live.reconnects}}));
+app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.2.1",tools:checkTools(),live:{active:state.live.active,reconnects:state.live.reconnects}}));
 app.get("/api/diagnostics",(req,res)=>{
   const tools=checkTools();
   const live=state.live;
@@ -231,8 +254,8 @@ function launchLiveDownloader(s, attempt=0){
     "--retry-sleep","fragment:exp=1:8",
     "--concurrent-fragments","1",
     "--force-ipv4",
-    ...YTDLP_BASE_ARGS,
-    "--newline","-f",p.format,
+    ...YTDLP_NETWORK_ARGS,
+    "-f",p.format,
     ...(p.extractor?["--extractor-args",p.extractor]:[]),
     "-o",s.recording,s.sourceUrl
   ];
