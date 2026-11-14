@@ -41,15 +41,63 @@ function normalizeYoutube(url){
   }catch{}
   return url;
 }
-function run(cmd,args,onLine){
+function run(cmd,args,onLine,{timeout=0}={}){
   return new Promise((resolve,reject)=>{
     const p=command(cmd,args);
-    let stderr="",stdout="";
+    let stderr="",stdout="",settled=false;
+    const done=(err,value)=>{if(settled)return;settled=true;if(timer)clearTimeout(timer);err?reject(err):resolve(value)};
+    const timer=timeout?setTimeout(()=>{
+      try{if(process.platform==="win32"&&p.pid)command("taskkill",["/PID",String(p.pid),"/T","/F"]);else p.kill("SIGKILL")}catch{}
+      done(new Error(cmd+" agotó el tiempo de espera"));
+    },timeout):null;
     p.stdout.on("data",d=>{stdout+=d; onLine?.(String(d));});
     p.stderr.on("data",d=>{stderr+=d; onLine?.(String(d));});
-    p.on("error",reject);
-    p.on("close",code=>code===0?resolve({stdout,stderr}):reject(new Error(stderr||stdout||cmd+" exit "+code)));
+    p.on("error",e=>done(e));
+    p.on("close",code=>code===0?done(null,{stdout,stderr}):done(new Error(stderr||stdout||cmd+" exit "+code)));
   });
+}
+
+function ytBaseArgs(){
+  const args=["--ignore-config","--no-playlist","--newline","--socket-timeout","20","--retries","2","--fragment-retries","2","--extractor-retries","2"];
+  // Optional: set CLIPRD_COOKIES_BROWSER=chrome|edge|firefox when YouTube requires an authenticated session.
+  const browser=process.env.CLIPRD_COOKIES_BROWSER;
+  if(browser)args.push("--cookies-from-browser",browser);
+  return args;
+}
+const ytProfiles=[
+  {name:"Automático",args:[]},
+  {name:"Web",args:["--extractor-args","youtube:player_client=web"]},
+  {name:"Android",args:["--extractor-args","youtube:player_client=android"]}
+];
+
+async function probeYoutube(url,target){
+  let lastError=null;
+  for(let i=0;i<ytProfiles.length;i++){
+    const profile=ytProfiles[i];
+    target.message="Comprobando acceso: "+profile.name;
+    addLog(target,"YouTube preflight "+(i+1)+"/"+ytProfiles.length+" · "+profile.name);
+    try{
+      const result=await run("yt-dlp",[...ytBaseArgs(),...profile.args,"--skip-download","--dump-single-json",url],line=>addLog(target,line.trim()),{timeout:45000});
+      const meta=JSON.parse(result.stdout.trim().split(/\r?\n/).filter(Boolean).pop());
+      if(meta&&meta.id)return {profile,meta};
+    }catch(e){lastError=e;addLog(target,"Perfil "+profile.name+" no disponible: "+e.message.slice(0,220));}
+  }
+  throw new Error("YouTube no entregó formatos reproducibles para esta sesión. "+(process.env.CLIPRD_COOKIES_BROWSER?"Revisa la sesión del navegador.":"Prueba con una sesión autorizada configurando CLIPRD_COOKIES_BROWSER=chrome o edge.")+(lastError?" · "+lastError.message.slice(0,180):""));
+}
+
+async function downloadYoutube(url,output,target,{live=false}={}){
+  const access=await probeYoutube(url,target);
+  target.message="Descargando con perfil "+access.profile.name;
+  addLog(target,"Formato: selección automática de yt-dlp (sin forzar best)");
+  const args=[...ytBaseArgs(),...access.profile.args];
+  if(live)args.push("--live-from-start","--hls-use-mpegts","--retries","infinite","--fragment-retries","infinite");
+  args.push("--merge-output-format","mp4","-o",output,url);
+  await run("yt-dlp",args,line=>{
+    addLog(target,line.trim());
+    const m=line.match(/(\d{1,3}(?:\.\d+)?)%/);
+    if(m&&!live){target.progress=Math.min(70,5+Number(m[1])*0.65);target.message="Descargando "+m[1]+"%";}
+  },{timeout:live?0:10*60*1000});
+  return access;
 }
 async function makeThumbs(input,base,start,duration){
   const points=[0.1,0.5,0.85];
@@ -81,10 +129,8 @@ app.post("/auto-clips",async(req,res)=>{
       const url=normalizeYoutube(sourceUrl);
       const base="auto-"+Date.now();
       const input=path.join(dirs.downloads,base+".mp4");
-      job.message="Descargando video"; addLog(job,"yt-dlp iniciado");
-      await run("yt-dlp",["--no-playlist","--newline","--socket-timeout","30","--retries","3","--fragment-retries","3","--merge-output-format","mp4","-o",input,url],line=>{
-        addLog(job,line.trim()); const m=line.match(/(\d{1,3}\.\d+)%/); if(m){job.progress=Math.min(70,5+Number(m[1])*0.65);job.message="Descargando "+m[1]+"%";}
-      });
+      job.message="Verificando acceso a YouTube"; addLog(job,"Iniciando diagnóstico de formatos");
+      await downloadYoutube(url,input,job);
       if(!fs.existsSync(input))throw new Error("yt-dlp terminó sin crear el video");
       job.progress=72; job.message="Analizando duración";
       const probe=await run("ffprobe",["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",input]);
@@ -114,12 +160,24 @@ app.post("/live/start",(req,res)=>{
   if(live.active)return res.status(409).json({error:"Live ya activo"});
   const stamp=Date.now(),recording=path.join(dirs.live,"live-"+stamp+".mp4");
   live={active:true,sourceUrl:normalizeYoutube(sourceUrl),startedAt:now(),process:null,recording,timer:null,clips:0,status:"starting",log:[]};
-  addLog(live,"Iniciando captura LIVE");
-  const p=command("yt-dlp",["--no-playlist","--live-from-start","--newline","--socket-timeout","30","--retries","infinite","--fragment-retries","infinite","--merge-output-format","mp4","-o",recording,live.sourceUrl]);
-  live.process=p; live.status="recording";
-  p.stdout.on("data",d=>addLog(live,String(d).trim()));
-  p.stderr.on("data",d=>addLog(live,String(d).trim()));
-  p.on("close",()=>{if(live.active){live.status="stopped";live.active=false;}});
+  addLog(live,"Verificando acceso al LIVE antes de grabar");
+  // Preflight avoids creating empty/corrupt .part files when YouTube exposes no formats.
+  (async()=>{
+    try{
+      const access=await probeYoutube(live.sourceUrl,live);
+      if(!live.active)return;
+      live.status="recording";
+      addLog(live,"LIVE accesible con perfil "+access.profile.name);
+      const args=[...ytBaseArgs(),...access.profile.args,"--live-from-start","--hls-use-mpegts","--retries","infinite","--fragment-retries","infinite","--merge-output-format","mp4","-o",recording,live.sourceUrl];
+      const p=command("yt-dlp",args);
+      live.process=p;
+      p.stdout.on("data",d=>addLog(live,String(d).trim()));
+      p.stderr.on("data",d=>addLog(live,String(d).trim()));
+      p.on("close",()=>{if(live.active){live.status="stopped";live.active=false;}});
+    }catch(e){
+      live.status="error";live.active=false;addLog(live,"LIVE NO INICIADO: "+e.message);
+    }
+  })();
   const segment=async()=>{
     if(!live.active)return;
     const elapsed=Math.floor((Date.now()-new Date(live.startedAt).getTime())/1000);
