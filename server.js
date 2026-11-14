@@ -44,21 +44,28 @@ function listClips(){
   }).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
 }
 function checkTools(){
-  const y=spawnSync("yt-dlp",["--version"],{windowsHide:true});
-  const f=spawnSync("ffmpeg",["-version"],{windowsHide:true});
-  return {ytDlp:y.status===0,ffmpeg:f.status===0};
+  const y=spawnSync("yt-dlp",["--version"],{windowsHide:true,encoding:"utf8"});
+  const f=spawnSync("ffmpeg",["-version"],{windowsHide:true,encoding:"utf8"});
+  return {
+    ytDlp:y.status===0,
+    ytDlpVersion:String(y.stdout||"").trim()||null,
+    ffmpeg:f.status===0,
+    node:process.version
+  };
 }
 function parsePercent(text){
   const m=text.match(/(?:\[download\]\s*)?(\d{1,3}(?:\.\d+)?)%/);
   return m?Math.min(100,Math.max(0,Number(m[1]))):null;
 }
+const YTDLP_JS_ARGS=["--no-js-runtimes","--js-runtimes","node","--remote-components","ejs:npm"];
+
 async function download(source,outFile){
-  const formats=["bestvideo+bestaudio/best","bv*+ba/best","best"];
+  const formats=["bestvideo*+bestaudio/best","bv*+ba/best","best"];
   let last;
   for(const format of formats){
     try{
       state.job.message="Descargando video…"; state.job.percent=0;
-      await run("yt-dlp",["--no-playlist","-f",format,"--merge-output-format","mp4","--newline","-o",outFile,source],{
+      await run("yt-dlp",["--no-playlist",...YTDLP_JS_ARGS,"-f",format,"--merge-output-format","mp4","--newline","-o",outFile,source],{
         onStderr:t=>{const p=parsePercent(t);if(p!==null){state.job.percent=p;state.job.message="Descargando video: "+p+"%"}}
       });
       state.job.percent=100; return;
@@ -160,13 +167,15 @@ async function makeLiveClip({force=false}={}){
 }
 
 function launchLiveDownloader(s, attempt=0){
-  // No forzamos ios/web_safari: YouTube puede ocultar todos los formatos
-  // detrás de SABR o exigir un GVS PO Token. Probamos clientes que suelen
-  // exponer formatos reproducibles sin depender de ese token.
+  // YouTube cambió la extracción de formatos. No dependemos de Deno, que en esta
+  // máquina estaba agotando la conexión al player JS: usamos el Node que ya ejecuta
+  // CLIPRD y permitimos a yt-dlp obtener/actualizar los componentes EJS por npm.
+  // Después probamos clientes alternativos que suelen exponer formatos de LIVE.
   const profiles=[
-    {name:"Extractor predeterminado", format:"bestvideo*+bestaudio/best", client:null},
-    {name:"Android VR", format:"bestvideo*+bestaudio/best", client:"android_vr"},
-    {name:"TV HTML5", format:"bestvideo*+bestaudio/best", client:"tv"}
+    {name:"Node + extractor predeterminado", format:"bestvideo*+bestaudio/best", extractor:null},
+    {name:"Default sin web_embedded", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=default,-web_embedded"},
+    {name:"Android", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=android"},
+    {name:"VisionOS", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=visionos"}
   ];
   const p=profiles[Math.min(attempt,profiles.length-1)];
   s.message="Conectando al LIVE ("+p.name+")…";
@@ -174,8 +183,9 @@ function launchLiveDownloader(s, attempt=0){
 
   const args=[
     "--ignore-config","--no-playlist","--no-part","--hls-use-mpegts",
+    ...YTDLP_JS_ARGS,
     "--newline","-f",p.format,
-    ...(p.client?["--extractor-args","youtube:player_client="+p.client]:[]),
+    ...(p.extractor?["--extractor-args",p.extractor]:[]),
     "-o",s.recording,s.sourceUrl
   ];
   s.child=spawn("yt-dlp",args,{windowsHide:true});
@@ -184,7 +194,7 @@ function launchLiveDownloader(s, attempt=0){
     output+=t;
     const pct=parsePercent(t);
     if(pct!==null){s.percent=pct;s.message="Recibiendo LIVE: "+pct+"%"}
-    if(/ERROR:|Requested format is not available|n challenge solving failed/i.test(t)){
+    if(/ERROR:|Requested format is not available|No video formats found|n challenge solving failed/i.test(t)){
       s.lastError=t.slice(-1000);
       console.error("LIVE yt-dlp:",t.trim());
     }
@@ -194,16 +204,17 @@ function launchLiveDownloader(s, attempt=0){
   s.child.on("error",e=>{s.lastError=e.message;s.message="Error al iniciar yt-dlp"});
   s.child.on("close",code=>{
     if(!s.active||s.stopping) return;
-    const failed=code!==0 || /Requested format is not available|n challenge solving failed|ERROR:/i.test(output);
+    const failed=code!==0 || /Requested format is not available|No video formats found|n challenge solving failed|ERROR:/i.test(output);
     if(failed && attempt<profiles.length-1){
-      console.log("LIVE: formato no disponible. Probando fallback...");
+      console.log("LIVE: intento",attempt+1,"falló. Probando siguiente extractor...");
       s.lastError=null;
       setTimeout(()=>launchLiveDownloader(s,attempt+1),1200);
       return;
     }
     if(code!==0){
-      s.lastError=(output.slice(-1000)||"yt-dlp terminó con código "+code);
-      s.message="No se pudo conectar al LIVE. Actualiza yt-dlp y revisa el enlace.";
+      s.lastError=(output.slice(-1500)||"yt-dlp terminó con código "+code);
+      s.message="No se pudo obtener ningún formato del LIVE.";
+      console.error("LIVE FALLÓ DESPUÉS DE TODOS LOS INTENTOS. Revisa /health y la versión de yt-dlp.");
     }
   });
 }
