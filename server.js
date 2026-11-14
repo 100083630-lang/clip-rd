@@ -159,6 +159,51 @@ async function makeLiveClip({force=false}={}){
   return false;
 }
 
+function launchLiveDownloader(s, attempt=0){
+  const profiles=[
+    {name:"HLS combinado", format:"best[protocol*=m3u8][vcodec!=none][acodec!=none]/best[acodec!=none][vcodec!=none]", client:"ios,web_safari"},
+    {name:"Mejor combinado", format:"bv*+ba/best", client:"ios,web_safari"},
+    {name:"Formato universal", format:"best", client:"web_safari,ios"}
+  ];
+  const p=profiles[Math.min(attempt,profiles.length-1)];
+  s.message="Conectando al LIVE ("+p.name+")…";
+  console.log("LIVE yt-dlp intento",attempt+1,"/",profiles.length,"-",p.name);
+
+  const args=[
+    "--ignore-config","--no-playlist","--live-from-start","--no-part","--hls-use-mpegts",
+    "--extractor-args","youtube:player_client="+p.client,
+    "-f",p.format,"--newline","-o",s.recording,s.sourceUrl
+  ];
+  s.child=spawn("yt-dlp",args,{windowsHide:true});
+  let output="";
+  const handle=t=>{
+    output+=t;
+    const pct=parsePercent(t);
+    if(pct!==null){s.percent=pct;s.message="Recibiendo LIVE: "+pct+"%"}
+    if(/ERROR:|Requested format is not available|n challenge solving failed/i.test(t)){
+      s.lastError=t.slice(-1000);
+      console.error("LIVE yt-dlp:",t.trim());
+    }
+  };
+  s.child.stdout?.on("data",d=>handle(String(d)));
+  s.child.stderr?.on("data",d=>handle(String(d)));
+  s.child.on("error",e=>{s.lastError=e.message;s.message="Error al iniciar yt-dlp"});
+  s.child.on("close",code=>{
+    if(!s.active||s.stopping) return;
+    const failed=code!==0 || /Requested format is not available|n challenge solving failed|ERROR:/i.test(output);
+    if(failed && attempt<profiles.length-1){
+      console.log("LIVE: formato no disponible. Probando fallback...");
+      s.lastError=null;
+      setTimeout(()=>launchLiveDownloader(s,attempt+1),1200);
+      return;
+    }
+    if(code!==0){
+      s.lastError=(output.slice(-1000)||"yt-dlp terminó con código "+code);
+      s.message="No se pudo conectar al LIVE. Actualiza yt-dlp y revisa el enlace.";
+    }
+  });
+}
+
 app.post("/live/start",(req,res)=>{
   if(state.live.active) return res.json({active:true,message:"Live Radar ya está activo"});
   const {sourceUrl,clipLength=45}=req.body||{};
@@ -170,29 +215,12 @@ app.post("/live/start",(req,res)=>{
   s.recording=path.join(LIVE,"live-"+Date.now()+".ts");
   s.recordingTemplate=path.basename(s.recording);s.message="Conectando al LIVE…";
 
-  // LIVE estable: HLS combinado + MPEG-TS + sin .part.
-  // Así FFmpeg puede leer el archivo mientras sigue creciendo.
-  const format="best[protocol*=m3u8][vcodec!=none][acodec!=none]/best[acodec!=none][vcodec!=none]";
-  s.child=spawn("yt-dlp",[
-    "--no-playlist","--live-from-start","--no-part","--hls-use-mpegts",
-    "-f",format,"--newline","-o",s.recording,sourceUrl
-  ],{windowsHide:true});
-
-  s.child.stdout?.on("data",d=>{const t=String(d);const p=parsePercent(t);if(p!==null){s.percent=p;s.message="Recibiendo LIVE: "+p+"%"}});
-  s.child.stderr?.on("data",d=>{
-    const msg=String(d);const p=parsePercent(msg);
-    if(p!==null){s.percent=p;s.message="Recibiendo LIVE: "+p+"%"}
-    if(/ERROR/i.test(msg)){s.lastError=msg.slice(-800);console.error("LIVE yt-dlp:",msg.trim())}
-  });
-  s.child.on("error",e=>{s.lastError=e.message;s.message="Error al iniciar yt-dlp"});
-  s.child.on("close",code=>{if(s.active&&!s.stopping&&code!==0){s.lastError="yt-dlp terminó con código "+code;s.message="La descarga del LIVE se detuvo"}});
-
+  launchLiveDownloader(s,0);
   setTimeout(()=>makeLiveClip(),8000);
   s.timer=setInterval(()=>makeLiveClip(),5000);
   console.log("LIVE INICIADO:",sourceUrl);
   res.json({active:true,message:"🟢 Live conectado. Cortes automáticos cada "+s.clipLength+" segundos"});
 });
-
 app.get("/live/status",(req,res)=>res.json({
   active:state.live.active,sourceUrl:state.live.sourceUrl,startedAt:state.live.startedAt,
   clipLength:state.live.clipLength,processedSegments:state.live.processed,lastError:state.live.lastError,
