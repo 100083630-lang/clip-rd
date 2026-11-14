@@ -217,5 +217,5 @@ app.post("/live/stop",async(req,res)=>{
   res.json({active:false,message:"🛑 Live detenido. Último segmento disponible procesado."});
 });
 
-app.get("*",(req,res)=>res.sendFile(path.join(PUBLIC,"index.html")));
+app.get("/*splat",(req,res)=>res.sendFile(path.join(PUBLIC,"index.html")));
 app.listen(PORT,"127.0.0.1",()=>console.log("CLIPRD 3.0 listo en http://127.0.0.1:"+PORT));
