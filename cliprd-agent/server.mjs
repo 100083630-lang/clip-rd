@@ -57,7 +57,7 @@ async function renderSource(source,clips,work){
 async function process(sourceUrl,clips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);return await renderSource(source,clips,work)}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
 async function autoProcess(sourceUrl,clipLength,maxClips){const job=crypto.randomUUID(),work=path.join(os.tmpdir(),"cliprd",job);await mkdir(work,{recursive:true});try{const source=await downloadSource(sourceUrl,work);const clips=await audioBasedSegments(source,work,clipLength,maxClips);const result=await renderSource(source,clips,work);return{...result,clips,analysis:"audio-activity"}}finally{await rm(work,{recursive:true,force:true}).catch(()=>{})}}
 
-const live={active:false,sourceUrl:"",work:"",child:null,timer:null,processed:new Set(),outputs:[],events:[],clipLength:45,maxClips:2,startedAt:null,lastError:null};
+const live={active:false,sourceUrl:"",work:"",child:null,timer:null,processed:new Set(),outputs:[],events:[],clipLength:45,maxClips:2,startedAt:null,lastError:null,stopping:false};
 function liveEvent(message){live.events.unshift({time:Date.now(),message});live.events=live.events.slice(0,30)}
 async function getDirectStream(sourceUrl,work){const r=await run("yt-dlp",ytArgs(["--no-playlist","-f","best","-g",sourceUrl]),work,60000);const direct=(r.out||"").split(/\r?\n/).map(x=>x.trim()).find(Boolean);if(!direct)throw new Error("yt-dlp no devolvió una URL de stream para este Live");return direct}
 async function scanLive(){
@@ -76,24 +76,42 @@ async function scanLive(){
     }
   }catch(error){live.lastError=error instanceof Error?error.message:String(error);liveEvent("Error de análisis: "+live.lastError)}
 }
-async function stopLive(){if(live.timer){clearInterval(live.timer);live.timer=null}if(live.child){live.child.kill("SIGTERM");live.child=null}const oldWork=live.work;live.active=false;live.work="";if(oldWork)await rm(oldWork,{recursive:true,force:true}).catch(()=>{});liveEvent("Monitor Live detenido")}
+async function stopLive(){
+  if(live.timer){clearInterval(live.timer);live.timer=null}
+  live.stopping=true;
+  liveEvent("Deteniendo captura y procesando el último segmento…");
+  if(live.child){
+    if(process.platform==="win32"&&live.child.pid){
+      await run("taskkill",["/PID",String(live.child.pid),"/T","/F"],live.work,15000).catch(()=>{});
+    }else{live.child.kill("SIGTERM")}
+    live.child=null;
+  }
+  // Espera breve para que Windows libere el MP4 y procesa los segmentos cerrados.
+  await new Promise(r=>setTimeout(r,1200));
+  await scanLive().catch(()=>{});
+  const oldWork=live.work;
+  live.active=false;live.stopping=false;live.work="";
+  // Conservamos el trabajo unos segundos antes de limpiar: los clips ya se exportaron a OUT.
+  if(oldWork)setTimeout(()=>rm(oldWork,{recursive:true,force:true}).catch(()=>{}),5000);
+  liveEvent("Monitor Live detenido. Último corte enviado a Biblioteca.");
+}
 async function startLive(sourceUrl,clipLength,maxClips){
   await stopLive();const work=path.join(os.tmpdir(),"cliprd-live",crypto.randomUUID());await mkdir(work,{recursive:true});
   const direct=await getDirectStream(sourceUrl,work);
   const pattern=path.join(work,"segment-%06d.mp4");
-  const child=spawn("ffmpeg",["-hide_banner","-loglevel","warning","-i",direct,"-c","copy","-f","segment","-segment_time","60","-reset_timestamps","1",pattern],{cwd:work,windowsHide:true});
+  const child=spawn("ffmpeg",["-hide_banner","-loglevel","warning","-i",direct,"-c","copy","-f","segment","-segment_time",String(Math.max(10,clipLength||45)),"-reset_timestamps","1",pattern],{cwd:work,windowsHide:true});
   let stderr="";child.stderr.on("data",d=>{stderr+=d;if(stderr.length>4000)stderr=stderr.slice(-4000)});
   child.on("error",e=>{live.lastError=e.message;liveEvent("FFmpeg: "+e.message)});
   child.on("close",code=>{if(live.active&&code!==0){live.lastError=stderr||`FFmpeg terminó con código ${code}`;liveEvent("La captura del Live se detuvo")};live.child=null});
-  live.active=true;live.sourceUrl=sourceUrl;live.work=work;live.child=child;live.clipLength=clipLength;live.maxClips=maxClips;live.startedAt=Date.now();live.lastError=null;live.processed=new Set();live.outputs=[];live.events=[];liveEvent("🟢 Live conectado. Capturando segmentos de 60 segundos…");live.timer=setInterval(scanLive,12000);setTimeout(scanLive,15000);
+  live.active=true;live.sourceUrl=sourceUrl;live.work=work;live.child=child;live.clipLength=clipLength;live.maxClips=maxClips;live.startedAt=Date.now();live.lastError=null;live.processed=new Set();live.outputs=[];live.events=[];liveEvent("🟢 Live conectado. Capturando segmentos automáticos…");live.timer=setInterval(scanLive,12000);setTimeout(scanLive,15000);
   return {active:true};
 }
-function liveStatus(){return{active:live.active,sourceUrl:live.sourceUrl,startedAt:live.startedAt,outputs:live.outputs,events:live.events,lastError:live.lastError,processedSegments:live.processed.size}}
+function liveStatus(){return{active:live.active,stopping:live.stopping,sourceUrl:live.sourceUrl,startedAt:live.startedAt,outputs:live.outputs,events:live.events,lastError:live.lastError,processedSegments:live.processed.size,clipLength:live.clipLength}}
 
 const server=http.createServer(async(req,res)=>{try{
   if(req.method==="OPTIONS"){res.writeHead(204,cors());return res.end()}
   const url=new URL(req.url,`http://${req.headers.host}`);
-  if(req.method==="GET"&&url.pathname==="/health"){const dependencies=await dependencyStatus();const ok=Boolean(dependencies.ytDlp&&dependencies.ffmpeg)&&dependencies.cookieFile!=="missing";return json(res,ok?200:503,{ok,service:"CLIPRD Local Agent",version:"2.0.0",outputDir:OUT,dependencies,features:{autoClips:"audio-activity",liveMonitor:"rolling-segments"}})}
+  if(req.method==="GET"&&url.pathname==="/health"){const dependencies=await dependencyStatus();const ok=Boolean(dependencies.ytDlp&&dependencies.ffmpeg)&&dependencies.cookieFile!=="missing";return json(res,ok?200:503,{ok,service:"CLIPRD Local Agent",version:"2.2.2",outputDir:OUT,dependencies,features:{autoClips:"audio-activity",liveMonitor:"rolling-segments"}})}
   if(req.method==="POST"&&url.pathname==="/render"){const b=await body(req);const result=await process(safeUrl(b.sourceUrl),safeClips(b.clips));const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file}));return json(res,200,result)}
   if(req.method==="POST"&&url.pathname==="/auto-clips"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(8,Number(b.maxClips)||4));const result=await autoProcess(safeUrl(b.sourceUrl),len,max);const origin=`http://${HOST==="0.0.0.0"?"127.0.0.1":HOST}:${PORT}`;result.outputs=result.outputs.map(x=>({...x,url:origin+x.file}));return json(res,200,result)}
   if(req.method==="POST"&&url.pathname==="/live/start"){const b=await body(req),len=Math.max(10,Math.min(180,Number(b.clipLength)||45)),max=Math.max(1,Math.min(4,Number(b.maxClips)||2));await startLive(safeUrl(b.sourceUrl),len,max);return json(res,200,liveStatus())}
@@ -102,4 +120,4 @@ const server=http.createServer(async(req,res)=>{try{
   if(req.method==="GET"&&url.pathname.startsWith("/files/")){const rel=decodeURIComponent(url.pathname.slice(7)),target=path.resolve(OUT,rel);if(!target.startsWith(OUT+path.sep))return json(res,403,{error:"Ruta inválida"});const info=await stat(target);if(!info.isFile())return json(res,404,{error:"Archivo no encontrado"});res.writeHead(200,{"content-type":"video/mp4","content-length":info.size,"access-control-allow-origin":"*"});return createReadStream(target).pipe(res)}
   return json(res,404,{error:"Not found"});
 }catch(error){return json(res,400,{error:error instanceof Error?error.message:String(error)})}});
-server.listen(PORT,HOST,()=>console.log(`CLIPRD Local Agent v2.0.0 listo en http://${HOST}:${PORT}`));
+server.listen(PORT,HOST,()=>console.log(`CLIPRD Local Agent v2.2.2 listo en http://${HOST}:${PORT}`));
