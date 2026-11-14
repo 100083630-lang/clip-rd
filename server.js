@@ -178,10 +178,12 @@ async function detectLiveUrl(url){
 
 function launchLiveDownloader(s, attempt=0){
   const profiles=[
+    // Primero probamos un formato progresivo: una sola conexión es más estable para
+    // grabación continua y evita que video+audio DASH dupliquen fallos de CDN.
+    {name:"Progresivo estable", format:"best[protocol^=m3u8][ext=mp4]/best[ext=mp4]/best", extractor:null},
     {name:"Extractor predeterminado", format:"bestvideo*+bestaudio/best", extractor:null},
     {name:"Android", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=android"},
-    {name:"TV", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=tv"},
-    {name:"Universal progresivo", format:"best[ext=mp4]/best", extractor:null}
+    {name:"TV", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=tv"}
   ];
   const p=profiles[Math.min(attempt,profiles.length-1)];
   s.message="Conectando al LIVE ("+p.name+")…";
@@ -195,7 +197,7 @@ function launchLiveDownloader(s, attempt=0){
     "--retries","5",
     "--fragment-retries","10",
     "--retry-sleep","fragment:exp=1:8",
-    "--concurrent-fragments","4",
+    "--concurrent-fragments","1",
     "--force-ipv4",
     ...YTDLP_JS_ARGS,
     "--newline","-f",p.format,
@@ -206,7 +208,7 @@ function launchLiveDownloader(s, attempt=0){
   const child=spawn("yt-dlp",args,{windowsHide:true});
   s.child=child;
   let output="";
-  let sawActivity=false;
+  let sawActivity=false;\n  let sawBytes=false;
   let settled=false;
   let lastBytes=0;
   let lastProgressAt=Date.now();
@@ -221,7 +223,7 @@ function launchLiveDownloader(s, attempt=0){
         s.message="LIVE conectado. Grabando "+Math.round(bytes/1024/1024*10)/10+" MB…";
       }
       // Solo consideramos colgado cuando pasan 90 s sin escribir un solo byte.
-      if(sawActivity && Date.now()-lastProgressAt>90000){
+      if(sawBytes && Date.now()-lastProgressAt>90000){
         console.log("LIVE: 90 s sin nuevos datos. Reiniciando extractor...");
         if(process.platform==="win32"&&child.pid) spawnSync("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true});
         else child.kill("SIGKILL");
@@ -232,13 +234,13 @@ function launchLiveDownloader(s, attempt=0){
   // Si YouTube/yt-dlp se queda negociando formatos sin descargar nada, no dejamos
   // la aplicación congelada: matamos el intento y pasamos automáticamente al siguiente.
   const watchdog=setTimeout(()=>{
-    if(!settled && s.active && !s.stopping && !sawActivity){
+    if(!settled && s.active && !s.stopping && !sawBytes){
       s.lastError="Tiempo de espera al obtener formatos del LIVE";
       console.log("LIVE: tiempo de espera. Probando siguiente extractor...");
       if(process.platform==="win32"&&child.pid) spawnSync("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true});
       else child.kill("SIGKILL");
     }
-  },25000);
+  },45000);
 
   const handle=t=>{
     output+=t;
