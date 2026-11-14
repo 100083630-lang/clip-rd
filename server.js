@@ -1,401 +1,117 @@
 import express from "express";
 import cors from "cors";
-import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, renameSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import {spawn} from "node:child_process";
+import {mkdirSync, existsSync, statSync, readdirSync} from "node:fs";
+import {join, resolve, basename} from "node:path";
 
-const __dirname=path.dirname(fileURLToPath(import.meta.url));
-const PORT=3847;
 const app=express();
-app.use(cors());
-app.use(express.json({limit:"1mb"}));
+const PORT=3847;
+const ROOT=process.cwd();
+const PUBLIC=join(ROOT,"public");
+const DATA=join(ROOT,"data");
+const DOWNLOADS=join(DATA,"downloads");
+const CLIPS=join(DATA,"clips");
+[DATA,DOWNLOADS,CLIPS].forEach(p=>mkdirSync(p,{recursive:true}));
 
-const PUBLIC=path.join(__dirname,"public");
-const CLIPS=path.join(__dirname,"clips");
-const LIVE=path.join(__dirname,"live-recordings");
-const TMP=path.join(__dirname,"tmp");
-for(const dir of [CLIPS,LIVE,TMP]) mkdirSync(dir,{recursive:true});
-
+app.use(cors({origin:true}));
+app.use(express.json({limit:"2mb"}));
+app.use("/files",express.static(DATA,{acceptRanges:true,maxAge:0}));
 app.use(express.static(PUBLIC));
-app.use("/clips",express.static(CLIPS));
 
-const state={
-  job:{active:false,stage:"En espera",percent:0,message:"",error:null},
-  live:{active:false,sourceUrl:"",startedAt:null,clipLength:45,child:null,timer:null,reconnectTimer:null,reconnects:0,recording:"",recordingTemplate:"",processed:0,lastError:null,percent:0,message:"Detenido",stopping:false}
-};
+const jobs=new Map();
+const live={active:false,sourceUrl:"",startedAt:null,processes:[],clips:[],message:"Idle",progress:0};
 
-function run(bin,args,{cwd=__dirname,timeout=0,onStderr,onStdout}={}){
-  return new Promise((resolve,reject)=>{
-    const child=spawn(bin,args,{cwd,windowsHide:true});
-    let out="",err="";
-    child.stdout?.on("data",d=>{const t=String(d);out+=t;onStdout?.(t)});
-    child.stderr?.on("data",d=>{const t=String(d);err+=t;onStderr?.(t)});
-    const timer=timeout?setTimeout(()=>{child.kill("SIGKILL");reject(new Error("Tiempo agotado"))},timeout):null;
-    child.on("error",e=>{if(timer)clearTimeout(timer);reject(e)});
-    child.on("close",code=>{if(timer)clearTimeout(timer);code===0?resolve({out,err}):reject(new Error(err||bin+" terminó con código "+code))});
-  });
+function id(prefix="job"){return prefix+"-"+Date.now()+"-"+Math.random().toString(36).slice(2,8)}
+function run(cmd,args,{onLine,onErr,timeout=0}={}){
+ return new Promise((resolve,reject)=>{
+  const p=spawn(cmd,args,{windowsHide:true,shell:false});
+  let out="",err="",done=false;
+  const finish=(fn,v)=>{if(done)return;done=true; if(timer)clearTimeout(timer); fn(v)};
+  const line=s=>s.toString().split(/\r?\n/).filter(Boolean);
+  p.stdout.on("data",d=>{out+=d;line(d).forEach(x=>onLine?.(x))});
+  p.stderr.on("data",d=>{err+=d;line(d).forEach(x=>onErr?.(x))});
+  p.on("error",e=>finish(reject,e));
+  p.on("close",code=>code===0?finish(resolve,{out,err}):finish(reject,new Error((err||out||"Proceso falló")+"\nCódigo "+code)));
+  const timer=timeout?setTimeout(()=>{try{p.kill("SIGKILL")}catch{};finish(reject,new Error(cmd+" agotó el tiempo"))},timeout):null;
+ });
 }
-function safeName(s){return String(s||"clip").replace(/[^a-z0-9_-]/gi,"_").slice(0,60)}
+function parsePct(s){const m=s.match(/(\d+(?:\.\d+)?)%/);return m?Number(m[1]):null}
 function listClips(){
-  return readdirSync(CLIPS).filter(f=>f.toLowerCase().endsWith(".mp4")).map(f=>{
-    const st=statSync(path.join(CLIPS,f));
-    return {id:f,url:"/clips/"+encodeURIComponent(f),title:f.replace(/\.mp4$/i,"").replace(/[_-]+/g," "),createdAt:st.mtime.toISOString(),size:st.size};
-  }).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+ return readdirSync(CLIPS).filter(x=>x.endsWith(".mp4")).map(name=>{
+  const st=statSync(join(CLIPS,name));return {id:name,title:basename(name,".mp4"),url:"/files/clips/"+encodeURIComponent(name),createdAt:st.mtimeMs,size:st.size}
+ }).sort((a,b)=>b.createdAt-a.createdAt);
 }
-function checkTools(){
-  const y=spawnSync("yt-dlp",["--version"],{windowsHide:true,encoding:"utf8"});
-  const f=spawnSync("ffmpeg",["-version"],{windowsHide:true,encoding:"utf8"});
-  return {
-    ytDlp:y.status===0,
-    ytDlpVersion:String(y.stdout||"").trim()||null,
-    ffmpeg:f.status===0,
-    node:process.version
-  };
-}
-function parsePercent(text){
-  const m=text.match(/(?:\[download\]\s*)?(\d{1,3}(?:\.\d+)?)%/);
-  return m?Math.min(100,Math.max(0,Number(m[1]))):null;
-}
-// No descargamos componentes remotos al iniciar un LIVE: en Windows eso puede quedar
-// esperando la red indefinidamente. yt-dlp usa el runtime local disponible y cada
-// intento tiene límites de red/reintentos para fallar rápido y pasar al fallback.
-const YTDLP_NETWORK_ARGS=[
-  "--ignore-config","--no-playlist","--newline",
-  "--socket-timeout","30","--retries","5","--fragment-retries","10",
-  "--retry-sleep","http:exp=1:6","--retry-sleep","fragment:exp=1:10",
-  "--concurrent-fragments","1"
-];
-
-async function download(source,outFile){
-  // AUTO CLIP usa perfiles separados. Nunca usamos "-f best": yt-dlp advierte
-  // que fuerza un formato premezclado y puede desaparecer según el cliente de YouTube.
-  const profiles=[
-    {name:"Automático",args:[]},
-    {name:"TV combinado",args:["--extractor-args","youtube:player_client=tv","-f","bv*+ba/b"]},
-    {name:"Android combinado",args:["--extractor-args","youtube:player_client=android","-f","bv*+ba/b"]},
-    {name:"MP4 compatible",args:["--extractor-args","youtube:player_client=ios","-f","bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b"]}
-  ];
-  let last;
-  for(let i=0;i<profiles.length;i++){
-    const profile=profiles[i];
-    try{
-      state.job.stage="download";
-      state.job.message="Conectando con YouTube ("+profile.name+")…";
-      state.job.percent=0;
-      console.log("AUTO CLIP yt-dlp intento",i+1,"/",profiles.length,"-",profile.name);
-      await run("yt-dlp",[
-        ...YTDLP_NETWORK_ARGS,
-        ...profile.args,
-        "--merge-output-format","mp4","--newline",
-        "-o",outFile,source
-      ],{timeout:10*60*1000,
-        onStdout:t=>{
-          const p=parsePercent(t);
-          if(p!==null){state.job.percent=p;state.job.message="Descargando video: "+p+"%";}
-        },
-        onStderr:t=>{
-          const p=parsePercent(t);
-          if(p!==null){state.job.percent=p;state.job.message="Descargando video: "+p+"%";}
-          if(/ERROR:|WARNING:/i.test(t)) console.log("AUTO CLIP yt-dlp:",t.trim());
-        }
-      });
-      if(!isUsable(outFile,10000)) throw new Error("yt-dlp terminó sin crear un archivo utilizable");
-      state.job.percent=100;
-      state.job.message="Video descargado";
-      return;
-    }catch(e){
-      last=e;
-      console.error("AUTO CLIP intento",i+1,"falló:",e.message.slice(-600));
-      if(existsSync(outFile)) try{unlinkSync(outFile)}catch{}
-      if(i<profiles.length-1){
-        state.job.message="Formato no disponible. Probando otro cliente de YouTube…";
-        await new Promise(r=>setTimeout(r,1000));
-      }
-    }
-  }
-  throw last||new Error("No se pudo descargar el video desde YouTube");
-}
-function findLiveRecording(s){
-  return s.recording&&existsSync(s.recording)?s.recording:null;
-}
-function isUsable(file,min=50000){try{return existsSync(file)&&statSync(file).size>min}catch{return false}}
-function durationOf(file){
+async function downloadYoutube(url,out,job){
+ const profiles=[
+  {name:"Automático",args:[]},
+  {name:"TV",args:["--extractor-args","youtube:player_client=tv"]},
+  {name:"Android",args:["--extractor-args","youtube:player_client=android"]}
+ ];
+ let last;
+ for(let i=0;i<profiles.length;i++){
   try{
-    const r=spawnSync("ffprobe",["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",file],{windowsHide:true,encoding:"utf8"});
-    const n=Number(String(r.stdout||"").trim()); return Number.isFinite(n)?n:0;
-  }catch{return 0}
+   job.message="Conectando a YouTube · "+profiles[i].name;job.progress=Math.max(job.progress,3);
+   console.log("CLIPRD DOWNLOAD",i+1,profiles[i].name,url);
+   await run("yt-dlp",["--ignore-config","--no-playlist","--newline","--socket-timeout","30","--retries","3","--fragment-retries","5","--concurrent-fragments","1",...profiles[i].args,"--merge-output-format","mp4","-o",out,url],{
+    timeout:20*60*1000,
+    onLine:s=>{const p=parsePct(s);if(p!==null){job.progress=Math.max(3,Math.min(70,p*.7));job.message="Descargando "+p.toFixed(1)+"%"}}
+   });
+   return;
+  }catch(e){last=e;console.log("Perfil falló:",profiles[i].name,e.message.slice(-240));}
+ }
+ throw last||new Error("No fue posible descargar el video");
 }
+function safeKill(p){try{if(p&&!p.killed)p.kill("SIGKILL")}catch{}}
 
-app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.2.1",tools:checkTools(),live:{active:state.live.active,reconnects:state.live.reconnects}}));
-app.get("/api/diagnostics",(req,res)=>{
-  const tools=checkTools();
-  const live=state.live;
-  res.json({
-    ok:tools.ytDlp&&tools.ffmpeg,
-    tools,
-    live:{
-      active:live.active,
-      reconnects:live.reconnects,
-      bytes:live.recording&&existsSync(live.recording)?statSync(live.recording).size:0,
-      seconds:live.recording&&existsSync(live.recording)?Math.floor(durationOf(live.recording)):0,
-      lastError:live.lastError
-    }
-  });
-});
+app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 4.0 Local Creator Engine",version:"4.0.0"}));
+app.get("/api/status",(req,res)=>res.json({live:{active:live.active,message:live.message,progress:live.progress,clips:live.clips},jobs:[...jobs.values()].map(j=>({id:j.id,type:j.type,status:j.status,progress:j.progress,message:j.message,error:j.error||null}))}));
 app.get("/api/clips",(req,res)=>res.json({clips:listClips()}));
-app.get("/api/progress",(req,res)=>res.json(state.job));
 
-app.post("/api/auto-clips",async(req,res)=>{
-  console.log("LLEGÓ PETICIÓN DE CLIP",new Date().toLocaleTimeString());
-  const {sourceUrl,clipLength=45,maxClips=3}=req.body||{};
-  if(!sourceUrl) return res.status(400).json({error:"Falta sourceUrl"});
-  if(state.job.active) return res.status(409).json({error:"Ya hay una descarga en proceso"});
-  const length=Math.max(5,Math.min(300,Number(clipLength)||45));
-  const count=Math.max(1,Math.min(20,Number(maxClips)||3));
-  const source=path.join(TMP,"source-"+Date.now()+".mp4");
-  state.job={active:true,stage:"download",percent:0,message:"Preparando descarga…",error:null};
+app.post("/api/auto",async(req,res)=>{
+ const {sourceUrl,clipLength=45,maxClips=3}=req.body||{};
+ if(!sourceUrl)return res.status(400).json({error:"Falta sourceUrl"});
+ const job={id:id("auto"),type:"auto",status:"running",progress:0,message:"Preparando descarga",error:null,createdAt:Date.now()};
+ jobs.set(job.id,job);res.json({ok:true,jobId:job.id});
+ (async()=>{
   try{
-    if(/^https?:\/\//i.test(sourceUrl)) await download(sourceUrl,source);
-    else if(existsSync(sourceUrl)){state.job.message="Preparando archivo local…";state.job.percent=100;await run("ffmpeg",["-y","-i",sourceUrl,"-c","copy",source]);}
-    else throw new Error("Ruta o URL inválida");
-    const clips=[];
-    for(let i=0;i<count;i++){
-      const name=safeName("clip_"+Date.now()+"_"+(i+1))+".mp4";
-      const target=path.join(CLIPS,name);
-      state.job.stage="clip";state.job.message="Generando clip "+(i+1)+" de "+count+"…";
-      state.job.percent=Math.max(1,Math.round((i/count)*100));
-      await run("ffmpeg",["-y","-ss",String(i*length),"-i",source,"-t",String(length),"-map","0:v:0","-map","0:a?","-c:v","libx264","-c:a","aac","-movflags","+faststart",target]);
-      clips.push({id:name,url:"/clips/"+encodeURIComponent(name),title:"Clip "+(i+1),start:i*length,end:(i+1)*length,duration:length});
-    }
-    state.job.percent=100;state.job.stage="done";state.job.message="Clips listos";
-    res.json({ok:true,clips});
-  }catch(e){
-    console.error("AUTO CLIP ERROR:",e.message);
-    state.job.error=e.message;state.job.stage="error";state.job.message="Error";
-    res.status(500).json({error:e.message});
-  }finally{
-    state.job.active=false;
-    if(existsSync(source)) try{unlinkSync(source)}catch{}
-  }
+   const source=join(DOWNLOADS,job.id+".%(ext)s");
+   await downloadYoutube(sourceUrl,source,job);
+   job.progress=72;job.message="Creando cortes…";
+   const outPattern=join(CLIPS,"auto-"+Date.now()+"-%03d.mp4");
+   await run("ffmpeg",["-y","-i",source.replace("%(ext)s","mp4"),"-map","0:v?","-map","0:a?","-c","copy","-f","segment","-segment_time",String(Math.max(5,Number(clipLength)||45)),"-reset_timestamps","1","-segment_start_number","1",outPattern],{
+    timeout:20*60*1000,onErr:s=>{if(/time=/i.test(s)){job.progress=90;job.message="Generando clips…"}}
+   });
+   const all=listClips().filter(c=>c.id.startsWith("auto-")).slice(0,Number(maxClips)||3);
+   job.status="done";job.progress=100;job.message=all.length+" clip(s) listos";
+  }catch(e){job.status="error";job.error=e.message;job.message="Error al procesar"}
+ })();
 });
 
-async function makeLiveClip({force=false}={}){
-  const s=state.live;
-  const recording=findLiveRecording(s);
-  if(!recording){s.message="Esperando el primer segmento del LIVE…";return false;}
-  const size=statSync(recording).size;
-  if(size<750000){s.message="El LIVE está acumulando los primeros segundos…";return false;}
-
-  // No cortamos por tamaño: esperamos duración real. Esto evita leer un .part de 0.02 s.
-  const available=durationOf(recording);
-  const start=s.processed*s.clipLength;
-  const remaining=available-start;
-  const minimum=force?5:s.clipLength;
-  if(remaining<minimum){
-    s.message="Acumulando LIVE… "+Math.max(0,Math.floor(remaining))+" s disponibles para el siguiente clip";
-    return false;
-  }
-
-  const length=force?Math.min(s.clipLength,Math.floor(remaining)):s.clipLength;
-  const name=safeName("live_"+Date.now()+"_"+(s.processed+1))+".mp4";
-  const target=path.join(CLIPS,name);
-  try{
-    s.message="Creando clip LIVE "+(s.processed+1)+"…";
-    await run("ffmpeg",[
-      "-y","-analyzeduration","20M","-probesize","20M",
-      "-ss",String(start),"-i",recording,"-t",String(length),
-      "-map","0:v:0?","-map","0:a:0?",
-      "-c:v","libx264","-c:a","aac","-movflags","+faststart",target
-    ],{timeout:120000});
-    if(isUsable(target)){
-      s.processed++;
-      s.message="LIVE: "+s.processed+" clip(s) creados";
-      console.log("LIVE CLIP CREADO:",name);
-      return true;
-    }
-    if(existsSync(target)) unlinkSync(target);
-  }catch(e){
-    if(existsSync(target)) try{unlinkSync(target)}catch{}
-    s.lastError=e.message.slice(-1000);
-    s.message=force?"No había suficiente LIVE estable para crear el último clip":"Esperando más datos estables del LIVE…";
-    if(force) console.log("LIVE CLIP AÚN NO DISPONIBLE:",e.message);
-  }
-  return false;
-}
-
-async function detectLiveUrl(url){
-  try{
-    const r=await run("yt-dlp",["--ignore-config","--no-playlist","--socket-timeout","15","--retries","1","--print","%(is_live)s",url],{timeout:30000});
-    return String(r.out||"").trim().toLowerCase()==="true";
-  }catch{return null}
-}
-
-function launchLiveDownloader(s, attempt=0){
-  const profiles=[
-    // Primero probamos un formato progresivo: una sola conexión es más estable para
-    // grabación continua y evita que video+audio DASH dupliquen fallos de CDN.
-    {name:"Progresivo estable", format:"best[protocol^=m3u8][ext=mp4]/best[ext=mp4]/best", extractor:null},
-    {name:"Extractor predeterminado", format:"bestvideo*+bestaudio/best", extractor:null},
-    {name:"Android", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=android"},
-    {name:"TV", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=tv"}
-  ];
-  const p=profiles[Math.min(attempt,profiles.length-1)];
-  s.message="Conectando al LIVE ("+p.name+")…";
-  console.log("LIVE yt-dlp intento",attempt+1,"/",profiles.length,"-",p.name);
-
-  const args=[
-    "--ignore-config","--no-playlist","--no-part","--hls-use-mpegts",
-    // YouTube/CDN puede tardar más de 12 s en fragmentos HLS. No abortamos un LIVE
-    // por el primer timeout; usamos reintentos con pausa y varios fragmentos en paralelo.
-    "--socket-timeout","45",
-    "--retries","5",
-    "--fragment-retries","10",
-    "--retry-sleep","fragment:exp=1:8",
-    "--concurrent-fragments","1",
-    "--force-ipv4",
-    ...YTDLP_NETWORK_ARGS,
-    "-f",p.format,
-    ...(p.extractor?["--extractor-args",p.extractor]:[]),
-    "-o",s.recording,s.sourceUrl
-  ];
-
-  const child=spawn("yt-dlp",args,{windowsHide:true});
-  s.child=child;
-  let output="";
-  let sawActivity=false;
-  let sawBytes=false;
-  let settled=false;
-  let lastBytes=0;
-  let lastProgressAt=Date.now();
-
-  const progressWatch=setInterval(()=>{
-    if(settled || !s.active || s.stopping) return;
-    try{
-      const bytes=s.recording&&existsSync(s.recording)?statSync(s.recording).size:0;
-      if(bytes>lastBytes){
-        sawBytes=true;
-        lastBytes=bytes;
-        lastProgressAt=Date.now();
-        s.message="LIVE conectado. Grabando "+Math.round(bytes/1024/1024*10)/10+" MB…";
-      }
-      // Solo consideramos colgado cuando pasan 90 s sin escribir un solo byte.
-      if(sawBytes && Date.now()-lastProgressAt>90000){
-        console.log("LIVE: 90 s sin nuevos datos. Reiniciando extractor...");
-        if(process.platform==="win32"&&child.pid) spawnSync("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true});
-        else child.kill("SIGKILL");
-      }
-    }catch{}
-  },5000);
-
-  // Si YouTube/yt-dlp se queda negociando formatos sin descargar nada, no dejamos
-  // la aplicación congelada: matamos el intento y pasamos automáticamente al siguiente.
-  const watchdog=setTimeout(()=>{
-    if(!settled && s.active && !s.stopping && !sawBytes){
-      s.lastError="Tiempo de espera al obtener formatos del LIVE";
-      console.log("LIVE: tiempo de espera. Probando siguiente extractor...");
-      if(process.platform==="win32"&&child.pid) spawnSync("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true});
-      else child.kill("SIGKILL");
-    }
-  },45000);
-
-  const handle=t=>{
-    output+=t;
-    if(t.trim()) sawActivity=true;
-    const pct=parsePercent(t);
-    if(pct!==null){s.percent=pct;s.message="Recibiendo LIVE: "+pct+"%"}
-    if(/\[download\]|Destination:|Opening .* for downloading/i.test(t)){
-      s.message="LIVE conectado. Recibiendo transmisión…";
-    }
-    if(/ERROR:|Requested format is not available|No video formats found|n challenge solving failed/i.test(t)){
-      s.lastError=t.slice(-1000);
-      console.error("LIVE yt-dlp:",t.trim());
-    }
-  };
-
-  child.stdout?.on("data",d=>handle(String(d)));
-  child.stderr?.on("data",d=>handle(String(d)));
-  child.on("error",e=>{s.lastError=e.message;s.message="Error al iniciar yt-dlp"});
-
-  child.on("close",code=>{
-    settled=true; clearTimeout(watchdog); clearInterval(progressWatch);
-    if(!s.active||s.stopping) return;
-    // No tratamos cualquier palabra ERROR como fatal: yt-dlp puede imprimir avisos
-    // recuperables mientras sigue descargando. Solo el código de salida decide el fallo.
-    const failed=code!==0;
-
-    if(failed){
-      const next=attempt<profiles.length-1?attempt+1:0;
-      if(next===0) s.reconnects++;
-      const cycle=Math.min(30000,2000*Math.max(1,s.reconnects));
-      const delay=attempt<profiles.length-1?1500:cycle;
-      s.lastError=(output.slice(-1500)||"yt-dlp terminó con código "+code);
-      s.message=attempt<profiles.length-1
-        ?"Reconectando LIVE con otro perfil…"
-        :"LIVE sin conexión estable. Reintentando automáticamente en "+Math.ceil(delay/1000)+" s…";
-      console.error("LIVE REINTENTO:",s.lastError);
-      if(s.reconnectTimer) clearTimeout(s.reconnectTimer);
-      s.reconnectTimer=setTimeout(()=>{s.reconnectTimer=null;if(s.active&&!s.stopping) launchLiveDownloader(s,next)},delay);
-      return;
-    }
-
-    // Una sesión puede cerrarse limpiamente aunque el stream siga disponible.
-    if(s.active&&!s.stopping){
-      s.reconnects++;
-      s.message="La sesión LIVE terminó. Verificando reconexión…";
-      if(s.reconnectTimer) clearTimeout(s.reconnectTimer);
-      s.reconnectTimer=setTimeout(()=>{s.reconnectTimer=null;if(s.active&&!s.stopping) launchLiveDownloader(s,0)},Math.min(15000,2000*Math.max(1,s.reconnects)));
-    }
-  });
-}
-
-app.post("/live/start",(req,res)=>{
-  if(state.live.active) return res.json({active:true,message:"Live Radar ya está activo"});
-  const {sourceUrl,clipLength=45}=req.body||{};
-  if(!sourceUrl) return res.status(400).json({error:"Falta sourceUrl"});
-
-  const s=state.live;
-  s.active=true;s.stopping=false;s.sourceUrl=sourceUrl;s.startedAt=new Date().toISOString();
-  s.clipLength=Math.max(10,Number(clipLength)||45);s.processed=0;s.lastError=null;s.percent=0;s.reconnects=0;if(s.reconnectTimer){clearTimeout(s.reconnectTimer);s.reconnectTimer=null;}
-  s.recording=path.join(LIVE,"live-"+Date.now()+".ts");
-  s.recordingTemplate=path.basename(s.recording);s.message="Conectando al LIVE…";
-
-  // La detección es informativa. Nunca bloqueamos la conexión esperando metadata:
-  // si YouTube tarda, el grabador comienza de inmediato.
-  launchLiveDownloader(s,0);
-  detectLiveUrl(sourceUrl).then(isLive=>{
-    if(isLive===false) console.log("LIVE RADAR: el enlace parece VOD; el grabador intentará descargarlo igualmente.");
-    else if(isLive===true) console.log("LIVE RADAR: transmisión en directo confirmada.");
-  });
-  setTimeout(()=>makeLiveClip(),8000);
-  s.timer=setInterval(()=>makeLiveClip(),5000);
-  console.log("LIVE INICIADO:",sourceUrl);
-  res.json({active:true,message:"🟢 Live conectado. Cortes automáticos cada "+s.clipLength+" segundos"});
+app.post("/api/live/start",(req,res)=>{
+ const {sourceUrl}=req.body||{};
+ if(!sourceUrl)return res.status(400).json({error:"Falta sourceUrl"});
+ if(live.active)return res.status(409).json({error:"Ya hay un LIVE activo"});
+ live.active=true;live.sourceUrl=sourceUrl;live.startedAt=Date.now();live.message="Conectando LIVE…";live.progress=0;live.clips=[];
+ const stamp=Date.now();
+ const yargs=["--ignore-config","--no-playlist","--live-from-start","--newline","--socket-timeout","30","--retries","3","--fragment-retries","5","--concurrent-fragments","1","-o","-",sourceUrl];
+ const y=spawn("yt-dlp",yargs,{windowsHide:true});
+ const fargs=["-hide_banner","-loglevel","warning","-i","pipe:0","-map","0:v?","-map","0:a?","-c","copy","-f","segment","-segment_time","45","-reset_timestamps","1",join(CLIPS,"live-"+stamp+"-%05d.mp4")];
+ const f=spawn("ffmpeg",fargs,{windowsHide:true});
+ live.processes=[y,f];live.message="LIVE conectado · cortes automáticos cada 45 segundos";
+ y.stdout.pipe(f.stdin);
+ y.stderr.on("data",d=>{const s=d.toString();if(/ERROR:/i.test(s))console.log("LIVE yt-dlp:",s.trim().slice(-500));});
+ f.stderr.on("data",d=>{const s=d.toString();if(/error/i.test(s))console.log("LIVE ffmpeg:",s.trim().slice(-500));});
+ const poll=setInterval(()=>{if(!live.active){clearInterval(poll);return} live.clips=listClips().filter(c=>c.id.startsWith("live-"));live.progress=Math.min(99,Math.floor((Date.now()-live.startedAt)/45000*10));},2000);
+ const fail=e=>{if(live.active){live.message="LIVE detenido: "+e.message;live.active=false;live.processes.forEach(safeKill)}};
+ y.on("error",fail);f.on("error",fail);
+ res.json({ok:true,active:true,message:live.message});
 });
-app.get("/live/status",(req,res)=>res.json({
-  active:state.live.active,sourceUrl:state.live.sourceUrl,startedAt:state.live.startedAt,
-  clipLength:state.live.clipLength,processedSegments:state.live.processed,lastError:state.live.lastError,
-  percent:state.live.percent,message:state.live.message,recording:state.live.recording||null,
-  bytesDownloaded:state.live.recording&&existsSync(state.live.recording)?statSync(state.live.recording).size:0,
-  secondsAvailable:state.live.recording&&existsSync(state.live.recording)?Math.floor(durationOf(state.live.recording)):0
-}));
-
-app.post("/live/stop",async(req,res)=>{
-  const s=state.live;
-  if(!s.active) return res.json({active:false,message:"Live ya estaba detenido"});
-  s.stopping=true;s.message="Deteniendo LIVE…";
-  if(s.timer) clearInterval(s.timer);
-  if(s.reconnectTimer){clearTimeout(s.reconnectTimer);s.reconnectTimer=null;}
-  console.log("DETENIENDO LIVE…");
-  if(process.platform==="win32"&&s.child?.pid) spawnSync("taskkill",["/PID",String(s.child.pid),"/T","/F"],{windowsHide:true});
-  else s.child?.kill("SIGTERM");
-  s.child=null;
-  await new Promise(r=>setTimeout(r,1500));
-  // Ya con el proceso detenido el archivo queda libre; intentamos guardar el último segmento disponible.
-  await makeLiveClip({force:true});
-  s.active=false;s.stopping=false;s.timer=null;s.percent=100;s.message="🛑 Live detenido";
-  res.json({active:false,message:"🛑 Live detenido. Último segmento disponible procesado."});
+app.post("/api/live/stop",(req,res)=>{
+ live.message="Deteniendo LIVE…";
+ live.active=false;live.processes.forEach(safeKill);live.processes=[];
+ setTimeout(()=>{live.clips=listClips().filter(c=>c.id.startsWith("live-"));live.message="Detenido · "+live.clips.length+" clips disponibles";},800);
+ res.json({ok:true,message:"LIVE detenido"});
 });
 
-app.get("/*splat",(req,res)=>res.sendFile(path.join(PUBLIC,"index.html")));
-app.listen(PORT,"127.0.0.1",()=>console.log("CLIPRD 3.0 listo en http://127.0.0.1:"+PORT));
+app.get("*",(req,res)=>res.sendFile(join(PUBLIC,"index.html")));
+app.listen(PORT,"127.0.0.1",()=>console.log("CLIPRD 4.0 listo en http://127.0.0.1:"+PORT+"\nHealth: http://127.0.0.1:"+PORT+"/health"));
