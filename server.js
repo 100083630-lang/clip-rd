@@ -67,17 +67,17 @@ async function download(source,outFile){
   throw last||new Error("No se pudo descargar el video");
 }
 function findLiveRecording(s){
-  if(s.recording&&existsSync(s.recording)) return s.recording;
-  const base=path.basename(s.recordingTemplate);
-  const files=readdirSync(LIVE).filter(f=>f.startsWith(base+".")||f===base).map(f=>path.join(LIVE,f));
-  if(!files.length) return null;
-  files.sort((a,b)=>statSync(b).mtimeMs-statSync(a).mtimeMs);
-  s.recording=files[0];
-  return s.recording;
+  return s.recording&&existsSync(s.recording)?s.recording:null;
 }
 function isUsable(file,min=50000){try{return existsSync(file)&&statSync(file).size>min}catch{return false}}
+function durationOf(file){
+  try{
+    const r=spawnSync("ffprobe",["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",file],{windowsHide:true,encoding:"utf8"});
+    const n=Number(String(r.stdout||"").trim()); return Number.isFinite(n)?n:0;
+  }catch{return 0}
+}
 
-app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.0.1",tools:checkTools()}));
+app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.1.0",tools:checkTools()}));
 app.get("/api/clips",(req,res)=>res.json({clips:listClips()}));
 app.get("/api/progress",(req,res)=>res.json(state.job));
 
@@ -118,19 +118,31 @@ app.post("/api/auto-clips",async(req,res)=>{
 async function makeLiveClip({force=false}={}){
   const s=state.live;
   const recording=findLiveRecording(s);
-  if(!recording){
-    s.message="Esperando que yt-dlp cree el archivo del LIVE…";
+  if(!recording){s.message="Esperando el primer segmento del LIVE…";return false;}
+  const size=statSync(recording).size;
+  if(size<750000){s.message="El LIVE está acumulando los primeros segundos…";return false;}
+
+  // No cortamos por tamaño: esperamos duración real. Esto evita leer un .part de 0.02 s.
+  const available=durationOf(recording);
+  const start=s.processed*s.clipLength;
+  const remaining=available-start;
+  const minimum=force?5:s.clipLength;
+  if(remaining<minimum){
+    s.message="Acumulando LIVE… "+Math.max(0,Math.floor(remaining))+" s disponibles para el siguiente clip";
     return false;
   }
-  const size=statSync(recording).size;
-  if(size<50000){s.message="El LIVE todavía está acumulando datos…";return false;}
+
+  const length=force?Math.min(s.clipLength,Math.floor(remaining)):s.clipLength;
   const name=safeName("live_"+Date.now()+"_"+(s.processed+1))+".mp4";
   const target=path.join(CLIPS,name);
   try{
-    s.message="Cortando segmento LIVE "+(s.processed+1)+"…";
-    // Cortamos desde el inicio del archivo acumulado. El siguiente segmento solo avanza cuando el anterior se creó.
-    const start=s.processed*s.clipLength;
-    await run("ffmpeg",["-y","-ss",String(start),"-i",recording,"-t",String(s.clipLength),"-map","0:v:0","-map","0:a?","-c:v","libx264","-c:a","aac","-movflags","+faststart",target],{timeout:60000});
+    s.message="Creando clip LIVE "+(s.processed+1)+"…";
+    await run("ffmpeg",[
+      "-y","-analyzeduration","20M","-probesize","20M",
+      "-ss",String(start),"-i",recording,"-t",String(length),
+      "-map","0:v:0?","-map","0:a:0?",
+      "-c:v","libx264","-c:a","aac","-movflags","+faststart",target
+    ],{timeout:120000});
     if(isUsable(target)){
       s.processed++;
       s.message="LIVE: "+s.processed+" clip(s) creados";
@@ -140,8 +152,8 @@ async function makeLiveClip({force=false}={}){
     if(existsSync(target)) unlinkSync(target);
   }catch(e){
     if(existsSync(target)) try{unlinkSync(target)}catch{}
-    s.lastError=e.message.slice(-800);
-    s.message="LIVE todavía no tiene suficiente material para el siguiente corte";
+    s.lastError=e.message.slice(-1000);
+    s.message=force?"No había suficiente LIVE estable para crear el último clip":"Esperando más datos estables del LIVE…";
     if(force) console.log("LIVE CLIP AÚN NO DISPONIBLE:",e.message);
   }
   return false;
@@ -151,31 +163,42 @@ app.post("/live/start",(req,res)=>{
   if(state.live.active) return res.json({active:true,message:"Live Radar ya está activo"});
   const {sourceUrl,clipLength=45}=req.body||{};
   if(!sourceUrl) return res.status(400).json({error:"Falta sourceUrl"});
+
   const s=state.live;
   s.active=true;s.stopping=false;s.sourceUrl=sourceUrl;s.startedAt=new Date().toISOString();
   s.clipLength=Math.max(10,Number(clipLength)||45);s.processed=0;s.lastError=null;s.percent=0;
-  s.recording="";s.recordingTemplate="live-"+Date.now();s.message="Conectando al LIVE…";
-  const template=path.join(LIVE,s.recordingTemplate+".%(ext)s");
-  s.child=spawn("yt-dlp",["--no-playlist","-f","bestvideo+bestaudio/best","--merge-output-format","mp4","--newline","-o",template,sourceUrl],{windowsHide:true});
-  s.child.stdout?.on("data",d=>{const t=String(d);const p=parsePercent(t);if(p!==null){s.percent=p;s.message="Descargando LIVE: "+p+"%"}});
+  s.recording=path.join(LIVE,"live-"+Date.now()+".ts");
+  s.recordingTemplate=path.basename(s.recording);s.message="Conectando al LIVE…";
+
+  // LIVE estable: HLS combinado + MPEG-TS + sin .part.
+  // Así FFmpeg puede leer el archivo mientras sigue creciendo.
+  const format="best[protocol*=m3u8][vcodec!=none][acodec!=none]/best[acodec!=none][vcodec!=none]";
+  s.child=spawn("yt-dlp",[
+    "--no-playlist","--live-from-start","--no-part","--hls-use-mpegts",
+    "-f",format,"--newline","-o",s.recording,sourceUrl
+  ],{windowsHide:true});
+
+  s.child.stdout?.on("data",d=>{const t=String(d);const p=parsePercent(t);if(p!==null){s.percent=p;s.message="Recibiendo LIVE: "+p+"%"}});
   s.child.stderr?.on("data",d=>{
-    const msg=String(d); const p=parsePercent(msg);
-    if(p!==null){s.percent=p;s.message="Descargando LIVE: "+p+"%"}
-    if(/ERROR/i.test(msg)) s.lastError=msg.slice(-800);
+    const msg=String(d);const p=parsePercent(msg);
+    if(p!==null){s.percent=p;s.message="Recibiendo LIVE: "+p+"%"}
+    if(/ERROR/i.test(msg)){s.lastError=msg.slice(-800);console.error("LIVE yt-dlp:",msg.trim())}
   });
   s.child.on("error",e=>{s.lastError=e.message;s.message="Error al iniciar yt-dlp"});
-  s.child.on("close",code=>{if(s.active&&code!==0){s.lastError="yt-dlp terminó con código "+code;s.message="La descarga del LIVE se detuvo"}});
-  // Revisa primero pronto y luego cada 5 segundos; solo crea un clip cuando ya existe suficiente material.
-  setTimeout(()=>makeLiveClip(),5000);
+  s.child.on("close",code=>{if(s.active&&!s.stopping&&code!==0){s.lastError="yt-dlp terminó con código "+code;s.message="La descarga del LIVE se detuvo"}});
+
+  setTimeout(()=>makeLiveClip(),8000);
   s.timer=setInterval(()=>makeLiveClip(),5000);
   console.log("LIVE INICIADO:",sourceUrl);
-  res.json({active:true,message:"🟢 Live conectado. CLIPRD vigilará y cortará automáticamente cada "+s.clipLength+" segundos"});
+  res.json({active:true,message:"🟢 Live conectado. Cortes automáticos cada "+s.clipLength+" segundos"});
 });
 
 app.get("/live/status",(req,res)=>res.json({
   active:state.live.active,sourceUrl:state.live.sourceUrl,startedAt:state.live.startedAt,
   clipLength:state.live.clipLength,processedSegments:state.live.processed,lastError:state.live.lastError,
-  percent:state.live.percent,message:state.live.message,recording:state.live.recording||null
+  percent:state.live.percent,message:state.live.message,recording:state.live.recording||null,
+  bytesDownloaded:state.live.recording&&existsSync(state.live.recording)?statSync(state.live.recording).size:0,
+  secondsAvailable:state.live.recording&&existsSync(state.live.recording)?Math.floor(durationOf(state.live.recording)):0
 }));
 
 app.post("/live/stop",async(req,res)=>{
