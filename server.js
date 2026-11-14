@@ -60,7 +60,12 @@ function parsePercent(text){
 // No descargamos componentes remotos al iniciar un LIVE: en Windows eso puede quedar
 // esperando la red indefinidamente. yt-dlp usa el runtime local disponible y cada
 // intento tiene límites de red/reintentos para fallar rápido y pasar al fallback.
-const YTDLP_JS_ARGS=["--js-runtimes","node"];
+const YTDLP_BASE_ARGS=[
+  "--ignore-config","--no-playlist","--newline",
+  "--socket-timeout","30","--retries","10","--fragment-retries","20",
+  "--retry-sleep","1","--retry-sleep","fragment:exp=1:12",
+  "--concurrent-fragments","1","--no-progress"
+];
 
 const YTDLP_NETWORK_ARGS=[
   "--ignore-config","--no-playlist","--force-ipv4",
@@ -80,7 +85,7 @@ async function download(source,outFile){
   for(const format of formats){
     try{
       state.job.message="Descargando video…"; state.job.percent=0;
-      await run("yt-dlp",[...YTDLP_NETWORK_ARGS,...YTDLP_JS_ARGS,"-f",format,"--merge-output-format","mp4","--newline","-o",outFile,source],{timeout:10*60*1000,
+      await run("yt-dlp",[...YTDLP_NETWORK_ARGS,...YTDLP_BASE_ARGS,"-f",format,"--merge-output-format","mp4","--newline","-o",outFile,source],{timeout:10*60*1000,
         onStderr:t=>{const p=parsePercent(t);if(p!==null){state.job.percent=p;state.job.message="Descargando video: "+p+"%"}}
       });
       state.job.percent=100; return;
@@ -226,7 +231,7 @@ function launchLiveDownloader(s, attempt=0){
     "--retry-sleep","fragment:exp=1:8",
     "--concurrent-fragments","1",
     "--force-ipv4",
-    ...YTDLP_JS_ARGS,
+    ...YTDLP_BASE_ARGS,
     "--newline","-f",p.format,
     ...(p.extractor?["--extractor-args",p.extractor]:[]),
     "-o",s.recording,s.sourceUrl
