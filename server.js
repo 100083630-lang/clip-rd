@@ -22,7 +22,7 @@ app.use("/clips",express.static(CLIPS));
 
 const state={
   job:{active:false,stage:"En espera",percent:0,message:"",error:null},
-  live:{active:false,sourceUrl:"",startedAt:null,clipLength:45,child:null,timer:null,recording:"",recordingTemplate:"",processed:0,lastError:null,percent:0,message:"Detenido",stopping:false}
+  live:{active:false,sourceUrl:"",startedAt:null,clipLength:45,child:null,timer:null,reconnectTimer:null,reconnects:0,recording:"",recordingTemplate:"",processed:0,lastError:null,percent:0,message:"Detenido",stopping:false}
 };
 
 function run(bin,args,{cwd=__dirname,timeout=0,onStderr,onStdout}={}){
@@ -99,7 +99,22 @@ function durationOf(file){
   }catch{return 0}
 }
 
-app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.1.2",tools:checkTools()}));
+app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.2.0",tools:checkTools(),live:{active:state.live.active,reconnects:state.live.reconnects}}));
+app.get("/api/diagnostics",(req,res)=>{
+  const tools=checkTools();
+  const live=state.live;
+  res.json({
+    ok:tools.ytDlp&&tools.ffmpeg,
+    tools,
+    live:{
+      active:live.active,
+      reconnects:live.reconnects,
+      bytes:live.recording&&existsSync(live.recording)?statSync(live.recording).size:0,
+      seconds:live.recording&&existsSync(live.recording)?Math.floor(durationOf(live.recording)):0,
+      lastError:live.lastError
+    }
+  });
+});
 app.get("/api/clips",(req,res)=>res.json({clips:listClips()}));
 app.get("/api/progress",(req,res)=>res.json(state.job));
 
@@ -277,25 +292,31 @@ function launchLiveDownloader(s, attempt=0){
   child.on("close",code=>{
     settled=true; clearTimeout(watchdog); clearInterval(progressWatch);
     if(!s.active||s.stopping) return;
-    const failed=code!==0 || /Requested format is not available|No video formats found|n challenge solving failed|ERROR:/i.test(output);
+    // No tratamos cualquier palabra ERROR como fatal: yt-dlp puede imprimir avisos
+    // recuperables mientras sigue descargando. Solo el código de salida decide el fallo.
+    const failed=code!==0;
 
     if(failed){
       const next=attempt<profiles.length-1?attempt+1:0;
-      const delay=attempt<profiles.length-1?1200:8000;
+      if(next===0) s.reconnects++;
+      const cycle=Math.min(30000,2000*Math.max(1,s.reconnects));
+      const delay=attempt<profiles.length-1?1500:cycle;
       s.lastError=(output.slice(-1500)||"yt-dlp terminó con código "+code);
       s.message=attempt<profiles.length-1
         ?"Reconectando LIVE con otro perfil…"
-        :"LIVE sin conexión estable. Reiniciando ciclo automáticamente…";
+        :"LIVE sin conexión estable. Reintentando automáticamente en "+Math.ceil(delay/1000)+" s…";
       console.error("LIVE REINTENTO:",s.lastError);
-      setTimeout(()=>{if(s.active&&!s.stopping) launchLiveDownloader(s,next)},delay);
+      if(s.reconnectTimer) clearTimeout(s.reconnectTimer);
+      s.reconnectTimer=setTimeout(()=>{s.reconnectTimer=null;if(s.active&&!s.stopping) launchLiveDownloader(s,next)},delay);
       return;
     }
 
-    // Un LIVE puede terminar normalmente o una plataforma puede cerrar la sesión con
-    // código 0. Si seguimos activos y no fue una parada manual, supervisamos y reconectamos.
+    // Una sesión puede cerrarse limpiamente aunque el stream siga disponible.
     if(s.active&&!s.stopping){
+      s.reconnects++;
       s.message="La sesión LIVE terminó. Verificando reconexión…";
-      setTimeout(()=>{if(s.active&&!s.stopping) launchLiveDownloader(s,0)},3000);
+      if(s.reconnectTimer) clearTimeout(s.reconnectTimer);
+      s.reconnectTimer=setTimeout(()=>{s.reconnectTimer=null;if(s.active&&!s.stopping) launchLiveDownloader(s,0)},Math.min(15000,2000*Math.max(1,s.reconnects)));
     }
   });
 }
@@ -307,7 +328,7 @@ app.post("/live/start",(req,res)=>{
 
   const s=state.live;
   s.active=true;s.stopping=false;s.sourceUrl=sourceUrl;s.startedAt=new Date().toISOString();
-  s.clipLength=Math.max(10,Number(clipLength)||45);s.processed=0;s.lastError=null;s.percent=0;
+  s.clipLength=Math.max(10,Number(clipLength)||45);s.processed=0;s.lastError=null;s.percent=0;s.reconnects=0;if(s.reconnectTimer){clearTimeout(s.reconnectTimer);s.reconnectTimer=null;}
   s.recording=path.join(LIVE,"live-"+Date.now()+".ts");
   s.recordingTemplate=path.basename(s.recording);s.message="Conectando al LIVE…";
 
@@ -336,6 +357,7 @@ app.post("/live/stop",async(req,res)=>{
   if(!s.active) return res.json({active:false,message:"Live ya estaba detenido"});
   s.stopping=true;s.message="Deteniendo LIVE…";
   if(s.timer) clearInterval(s.timer);
+  if(s.reconnectTimer){clearTimeout(s.reconnectTimer);s.reconnectTimer=null;}
   console.log("DETENIENDO LIVE…");
   if(process.platform==="win32"&&s.child?.pid) spawnSync("taskkill",["/PID",String(s.child.pid),"/T","/F"],{windowsHide:true});
   else s.child?.kill("SIGTERM");
