@@ -160,19 +160,23 @@ async function makeLiveClip({force=false}={}){
 }
 
 function launchLiveDownloader(s, attempt=0){
+  // No forzamos ios/web_safari: YouTube puede ocultar todos los formatos
+  // detrás de SABR o exigir un GVS PO Token. Probamos clientes que suelen
+  // exponer formatos reproducibles sin depender de ese token.
   const profiles=[
-    {name:"HLS combinado", format:"best[protocol*=m3u8][vcodec!=none][acodec!=none]/best[acodec!=none][vcodec!=none]", client:"ios,web_safari"},
-    {name:"Mejor combinado", format:"bv*+ba/best", client:"ios,web_safari"},
-    {name:"Formato universal", format:"best", client:"web_safari,ios"}
+    {name:"Extractor predeterminado", format:"bestvideo*+bestaudio/best", client:null},
+    {name:"Android VR", format:"bestvideo*+bestaudio/best", client:"android_vr"},
+    {name:"TV HTML5", format:"bestvideo*+bestaudio/best", client:"tv"}
   ];
   const p=profiles[Math.min(attempt,profiles.length-1)];
   s.message="Conectando al LIVE ("+p.name+")…";
   console.log("LIVE yt-dlp intento",attempt+1,"/",profiles.length,"-",p.name);
 
   const args=[
-    "--ignore-config","--no-playlist","--live-from-start","--no-part","--hls-use-mpegts",
-    "--extractor-args","youtube:player_client="+p.client,
-    "-f",p.format,"--newline","-o",s.recording,s.sourceUrl
+    "--ignore-config","--no-playlist","--no-part","--hls-use-mpegts",
+    "--newline","-f",p.format,
+    ...(p.client?["--extractor-args","youtube:player_client="+p.client]:[]),
+    "-o",s.recording,s.sourceUrl
   ];
   s.child=spawn("yt-dlp",args,{windowsHide:true});
   let output="";
