@@ -208,7 +208,8 @@ function launchLiveDownloader(s, attempt=0){
   const child=spawn("yt-dlp",args,{windowsHide:true});
   s.child=child;
   let output="";
-  let sawActivity=false;\n  let sawBytes=false;
+  let sawActivity=false;
+  let sawBytes=false;
   let settled=false;
   let lastBytes=0;
   let lastProgressAt=Date.now();
@@ -218,6 +219,7 @@ function launchLiveDownloader(s, attempt=0){
     try{
       const bytes=s.recording&&existsSync(s.recording)?statSync(s.recording).size:0;
       if(bytes>lastBytes){
+        sawBytes=true;
         lastBytes=bytes;
         lastProgressAt=Date.now();
         s.message="LIVE conectado. Grabando "+Math.round(bytes/1024/1024*10)/10+" MB…";
