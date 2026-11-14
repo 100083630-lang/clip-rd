@@ -1,19 +1,20 @@
-# CLIPRD 3.0
+# CLIPRD 5.0
 
-Aplicación nueva y limpia para crear clips con un motor local.
+Aplicación reconstruida desde cero.
 
-## Requisitos
-- Node.js 20+
-- yt-dlp disponible en PATH
-- FFmpeg disponible en PATH
-
-## Ejecutar
-```powershell
+## Inicio
+```bash
 npm install
 npm start
 ```
 
 Abre http://127.0.0.1:3847
 
-## Health
-http://127.0.0.1:3847/health
+El servidor incluye:
+- Auto Clip con progreso
+- Biblioteca local
+- Monitor de trabajos
+- Live Monitor
+- API health en /health
+
+Requisitos externos: `yt-dlp` y `ffmpeg` disponibles en PATH.

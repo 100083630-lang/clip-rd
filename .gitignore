@@ -1,5 +1,7 @@
 node_modules/
 clips/
+downloads/
 live-recordings/
-tmp/
+thumbs/
+*.part
 .env
