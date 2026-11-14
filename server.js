@@ -87,7 +87,7 @@ function durationOf(file){
   }catch{return 0}
 }
 
-app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.1.1",tools:checkTools()}));
+app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.1.2",tools:checkTools()}));
 app.get("/api/clips",(req,res)=>res.json({clips:listClips()}));
 app.get("/api/progress",(req,res)=>res.json(state.job));
 
@@ -169,12 +169,19 @@ async function makeLiveClip({force=false}={}){
   return false;
 }
 
+async function detectLiveUrl(url){
+  try{
+    const r=await run("yt-dlp",["--ignore-config","--no-playlist","--socket-timeout","15","--retries","1","--print","%(is_live)s",url],{timeout:30000});
+    return String(r.out||"").trim().toLowerCase()==="true";
+  }catch{return null}
+}
+
 function launchLiveDownloader(s, attempt=0){
   const profiles=[
     {name:"Extractor predeterminado", format:"bestvideo*+bestaudio/best", extractor:null},
     {name:"Android", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=android"},
     {name:"TV", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=tv"},
-    {name:"Universal", format:"best/bestvideo+bestaudio", extractor:null}
+    {name:"Universal progresivo", format:"best[ext=mp4]/best", extractor:null}
   ];
   const p=profiles[Math.min(attempt,profiles.length-1)];
   s.message="Conectando al LIVE ("+p.name+")…";
@@ -182,7 +189,14 @@ function launchLiveDownloader(s, attempt=0){
 
   const args=[
     "--ignore-config","--no-playlist","--no-part","--hls-use-mpegts",
-    "--socket-timeout","12","--retries","1","--fragment-retries","1",
+    // YouTube/CDN puede tardar más de 12 s en fragmentos HLS. No abortamos un LIVE
+    // por el primer timeout; usamos reintentos con pausa y varios fragmentos en paralelo.
+    "--socket-timeout","45",
+    "--retries","5",
+    "--fragment-retries","10",
+    "--retry-sleep","fragment:exp=1:8",
+    "--concurrent-fragments","4",
+    "--force-ipv4",
     ...YTDLP_JS_ARGS,
     "--newline","-f",p.format,
     ...(p.extractor?["--extractor-args",p.extractor]:[]),
@@ -194,6 +208,26 @@ function launchLiveDownloader(s, attempt=0){
   let output="";
   let sawActivity=false;
   let settled=false;
+  let lastBytes=0;
+  let lastProgressAt=Date.now();
+
+  const progressWatch=setInterval(()=>{
+    if(settled || !s.active || s.stopping) return;
+    try{
+      const bytes=s.recording&&existsSync(s.recording)?statSync(s.recording).size:0;
+      if(bytes>lastBytes){
+        lastBytes=bytes;
+        lastProgressAt=Date.now();
+        s.message="LIVE conectado. Grabando "+Math.round(bytes/1024/1024*10)/10+" MB…";
+      }
+      // Solo consideramos colgado cuando pasan 90 s sin escribir un solo byte.
+      if(sawActivity && Date.now()-lastProgressAt>90000){
+        console.log("LIVE: 90 s sin nuevos datos. Reiniciando extractor...");
+        if(process.platform==="win32"&&child.pid) spawnSync("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true});
+        else child.kill("SIGKILL");
+      }
+    }catch{}
+  },5000);
 
   // Si YouTube/yt-dlp se queda negociando formatos sin descargar nada, no dejamos
   // la aplicación congelada: matamos el intento y pasamos automáticamente al siguiente.
@@ -225,7 +259,7 @@ function launchLiveDownloader(s, attempt=0){
   child.on("error",e=>{s.lastError=e.message;s.message="Error al iniciar yt-dlp"});
 
   child.on("close",code=>{
-    settled=true; clearTimeout(watchdog);
+    settled=true; clearTimeout(watchdog); clearInterval(progressWatch);
     if(!s.active||s.stopping) return;
     const failed=code!==0 || /Requested format is not available|No video formats found|n challenge solving failed|ERROR:/i.test(output);
 
@@ -255,7 +289,11 @@ app.post("/live/start",(req,res)=>{
   s.recording=path.join(LIVE,"live-"+Date.now()+".ts");
   s.recordingTemplate=path.basename(s.recording);s.message="Conectando al LIVE…";
 
-  launchLiveDownloader(s,0);
+  detectLiveUrl(sourceUrl).then(isLive=>{
+    if(isLive===false) console.log("LIVE RADAR: el enlace es un video normal (VOD). Se procesará cuando haya datos descargados.");
+    else if(isLive===true) console.log("LIVE RADAR: transmisión en directo confirmada.");
+    launchLiveDownloader(s,0);
+  });
   setTimeout(()=>makeLiveClip(),8000);
   s.timer=setInterval(()=>makeLiveClip(),5000);
   console.log("LIVE INICIADO:",sourceUrl);
