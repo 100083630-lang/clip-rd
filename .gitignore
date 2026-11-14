@@ -1,10 +1,5 @@
 node_modules/
-.project_id
-.github_repo
-.env
-.env.*
 clips/
-downloads/
-thumbs/
-.vercel/
-*.log
+live-recordings/
+tmp/
+.env

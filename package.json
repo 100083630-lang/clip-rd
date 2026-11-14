@@ -1,15 +1,8 @@
 {
-  "name": "cliprd-personal",
-  "version": "1.0.2",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "node scripts/build-static.mjs",
-    "dev": "npx serve .",
-    "start": "node server.mjs"
-  },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^5.1.0"
-  }
+  "name":"cliprd",
+  "version":"3.0.0",
+  "private":true,
+  "type":"module",
+  "scripts":{"start":"node server.js","dev":"node server.js"},
+  "dependencies":{"cors":"^2.8.5","express":"^5.1.0"}
 }
