@@ -62,13 +62,25 @@ function parsePercent(text){
 // intento tiene límites de red/reintentos para fallar rápido y pasar al fallback.
 const YTDLP_JS_ARGS=["--js-runtimes","node"];
 
+const YTDLP_NETWORK_ARGS=[
+  "--ignore-config","--no-playlist","--force-ipv4",
+  "--socket-timeout","30","--retries","3","--fragment-retries","5",
+  "--retry-sleep","http:exp=1:4","--retry-sleep","fragment:exp=1:6"
+];
+
 async function download(source,outFile){
-  const formats=["bestvideo*+bestaudio/best","bv*+ba/best","best"];
+  // Progresivo primero: para el cortador es más importante una descarga estable
+  // que separar audio/video y depender de dos conexiones DASH simultáneas.
+  const formats=[
+    "best[ext=mp4][protocol!*=dash]/best[ext=mp4]/best",
+    "bestvideo*+bestaudio/best",
+    "best"
+  ];
   let last;
   for(const format of formats){
     try{
       state.job.message="Descargando video…"; state.job.percent=0;
-      await run("yt-dlp",["--no-playlist",...YTDLP_JS_ARGS,"-f",format,"--merge-output-format","mp4","--newline","-o",outFile,source],{
+      await run("yt-dlp",[...YTDLP_NETWORK_ARGS,...YTDLP_JS_ARGS,"-f",format,"--merge-output-format","mp4","--newline","-o",outFile,source],{timeout:10*60*1000,
         onStderr:t=>{const p=parsePercent(t);if(p!==null){state.job.percent=p;state.job.message="Descargando video: "+p+"%"}}
       });
       state.job.percent=100; return;
@@ -267,17 +279,23 @@ function launchLiveDownloader(s, attempt=0){
     if(!s.active||s.stopping) return;
     const failed=code!==0 || /Requested format is not available|No video formats found|n challenge solving failed|ERROR:/i.test(output);
 
-    if(failed && attempt<profiles.length-1){
-      console.log("LIVE: intento",attempt+1,"falló. Probando siguiente extractor...");
-      s.lastError=null;
-      setTimeout(()=>launchLiveDownloader(s,attempt+1),800);
+    if(failed){
+      const next=attempt<profiles.length-1?attempt+1:0;
+      const delay=attempt<profiles.length-1?1200:8000;
+      s.lastError=(output.slice(-1500)||"yt-dlp terminó con código "+code);
+      s.message=attempt<profiles.length-1
+        ?"Reconectando LIVE con otro perfil…"
+        :"LIVE sin conexión estable. Reiniciando ciclo automáticamente…";
+      console.error("LIVE REINTENTO:",s.lastError);
+      setTimeout(()=>{if(s.active&&!s.stopping) launchLiveDownloader(s,next)},delay);
       return;
     }
 
-    if(code!==0){
-      s.lastError=(output.slice(-1500)||"yt-dlp terminó con código "+code);
-      s.message="No se pudo conectar al LIVE. Revisa si el enlace sigue EN VIVO o es público.";
-      console.error("LIVE FALLÓ:",s.lastError);
+    // Un LIVE puede terminar normalmente o una plataforma puede cerrar la sesión con
+    // código 0. Si seguimos activos y no fue una parada manual, supervisamos y reconectamos.
+    if(s.active&&!s.stopping){
+      s.message="La sesión LIVE terminó. Verificando reconexión…";
+      setTimeout(()=>{if(s.active&&!s.stopping) launchLiveDownloader(s,0)},3000);
     }
   });
 }
@@ -293,10 +311,12 @@ app.post("/live/start",(req,res)=>{
   s.recording=path.join(LIVE,"live-"+Date.now()+".ts");
   s.recordingTemplate=path.basename(s.recording);s.message="Conectando al LIVE…";
 
+  // La detección es informativa. Nunca bloqueamos la conexión esperando metadata:
+  // si YouTube tarda, el grabador comienza de inmediato.
+  launchLiveDownloader(s,0);
   detectLiveUrl(sourceUrl).then(isLive=>{
-    if(isLive===false) console.log("LIVE RADAR: el enlace es un video normal (VOD). Se procesará cuando haya datos descargados.");
+    if(isLive===false) console.log("LIVE RADAR: el enlace parece VOD; el grabador intentará descargarlo igualmente.");
     else if(isLive===true) console.log("LIVE RADAR: transmisión en directo confirmada.");
-    launchLiveDownloader(s,0);
   });
   setTimeout(()=>makeLiveClip(),8000);
   s.timer=setInterval(()=>makeLiveClip(),5000);
