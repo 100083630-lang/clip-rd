@@ -74,11 +74,11 @@ app.post("/api/auto",async(req,res)=>{
  jobs.set(job.id,job);res.json({ok:true,jobId:job.id});
  (async()=>{
   try{
-   const source=join(DOWNLOADS,job.id+".%(ext)s");
+   const source=join(DOWNLOADS,job.id+".mp4");
    await downloadYoutube(sourceUrl,source,job);
    job.progress=72;job.message="Creando cortes…";
    const outPattern=join(CLIPS,"auto-"+Date.now()+"-%03d.mp4");
-   await run("ffmpeg",["-y","-i",source.replace("%(ext)s","mp4"),"-map","0:v?","-map","0:a?","-c","copy","-f","segment","-segment_time",String(Math.max(5,Number(clipLength)||45)),"-reset_timestamps","1","-segment_start_number","1",outPattern],{
+   await run("ffmpeg",["-y","-i",source,"-map","0:v?","-map","0:a?","-c","copy","-f","segment","-segment_time",String(Math.max(5,Number(clipLength)||45)),"-reset_timestamps","1","-segment_start_number","1",outPattern],{
     timeout:20*60*1000,onErr:s=>{if(/time=/i.test(s)){job.progress=90;job.message="Generando clips…"}}
    });
    const all=listClips().filter(c=>c.id.startsWith("auto-")).slice(0,Number(maxClips)||3);
@@ -113,5 +113,5 @@ app.post("/api/live/stop",(req,res)=>{
  res.json({ok:true,message:"LIVE detenido"});
 });
 
-app.get("*",(req,res)=>res.sendFile(join(PUBLIC,"index.html")));
+app.use((req,res)=>res.sendFile(join(PUBLIC,"index.html")));
 app.listen(PORT,"127.0.0.1",()=>console.log("CLIPRD 4.0 listo en http://127.0.0.1:"+PORT+"\nHealth: http://127.0.0.1:"+PORT+"/health"));
