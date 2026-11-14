@@ -57,7 +57,10 @@ function parsePercent(text){
   const m=text.match(/(?:\[download\]\s*)?(\d{1,3}(?:\.\d+)?)%/);
   return m?Math.min(100,Math.max(0,Number(m[1]))):null;
 }
-const YTDLP_JS_ARGS=["--no-js-runtimes","--js-runtimes","node","--remote-components","ejs:npm"];
+// No descargamos componentes remotos al iniciar un LIVE: en Windows eso puede quedar
+// esperando la red indefinidamente. yt-dlp usa el runtime local disponible y cada
+// intento tiene límites de red/reintentos para fallar rápido y pasar al fallback.
+const YTDLP_JS_ARGS=["--js-runtimes","node"];
 
 async function download(source,outFile){
   const formats=["bestvideo*+bestaudio/best","bv*+ba/best","best"];
@@ -84,7 +87,7 @@ function durationOf(file){
   }catch{return 0}
 }
 
-app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.1.0",tools:checkTools()}));
+app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 3.0 Local Engine",version:"3.1.1",tools:checkTools()}));
 app.get("/api/clips",(req,res)=>res.json({clips:listClips()}));
 app.get("/api/progress",(req,res)=>res.json(state.job));
 
@@ -167,15 +170,11 @@ async function makeLiveClip({force=false}={}){
 }
 
 function launchLiveDownloader(s, attempt=0){
-  // YouTube cambió la extracción de formatos. No dependemos de Deno, que en esta
-  // máquina estaba agotando la conexión al player JS: usamos el Node que ya ejecuta
-  // CLIPRD y permitimos a yt-dlp obtener/actualizar los componentes EJS por npm.
-  // Después probamos clientes alternativos que suelen exponer formatos de LIVE.
   const profiles=[
-    {name:"Node + extractor predeterminado", format:"bestvideo*+bestaudio/best", extractor:null},
-    {name:"Default sin web_embedded", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=default,-web_embedded"},
+    {name:"Extractor predeterminado", format:"bestvideo*+bestaudio/best", extractor:null},
     {name:"Android", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=android"},
-    {name:"VisionOS", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=visionos"}
+    {name:"TV", format:"bestvideo*+bestaudio/best", extractor:"youtube:player_client=tv"},
+    {name:"Universal", format:"best/bestvideo+bestaudio", extractor:null}
   ];
   const p=profiles[Math.min(attempt,profiles.length-1)];
   s.message="Conectando al LIVE ("+p.name+")…";
@@ -183,38 +182,64 @@ function launchLiveDownloader(s, attempt=0){
 
   const args=[
     "--ignore-config","--no-playlist","--no-part","--hls-use-mpegts",
+    "--socket-timeout","12","--retries","1","--fragment-retries","1",
     ...YTDLP_JS_ARGS,
     "--newline","-f",p.format,
     ...(p.extractor?["--extractor-args",p.extractor]:[]),
     "-o",s.recording,s.sourceUrl
   ];
-  s.child=spawn("yt-dlp",args,{windowsHide:true});
+
+  const child=spawn("yt-dlp",args,{windowsHide:true});
+  s.child=child;
   let output="";
+  let sawActivity=false;
+  let settled=false;
+
+  // Si YouTube/yt-dlp se queda negociando formatos sin descargar nada, no dejamos
+  // la aplicación congelada: matamos el intento y pasamos automáticamente al siguiente.
+  const watchdog=setTimeout(()=>{
+    if(!settled && s.active && !s.stopping && !sawActivity){
+      s.lastError="Tiempo de espera al obtener formatos del LIVE";
+      console.log("LIVE: tiempo de espera. Probando siguiente extractor...");
+      if(process.platform==="win32"&&child.pid) spawnSync("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true});
+      else child.kill("SIGKILL");
+    }
+  },25000);
+
   const handle=t=>{
     output+=t;
+    if(t.trim()) sawActivity=true;
     const pct=parsePercent(t);
     if(pct!==null){s.percent=pct;s.message="Recibiendo LIVE: "+pct+"%"}
+    if(/\[download\]|Destination:|Opening .* for downloading/i.test(t)){
+      s.message="LIVE conectado. Recibiendo transmisión…";
+    }
     if(/ERROR:|Requested format is not available|No video formats found|n challenge solving failed/i.test(t)){
       s.lastError=t.slice(-1000);
       console.error("LIVE yt-dlp:",t.trim());
     }
   };
-  s.child.stdout?.on("data",d=>handle(String(d)));
-  s.child.stderr?.on("data",d=>handle(String(d)));
-  s.child.on("error",e=>{s.lastError=e.message;s.message="Error al iniciar yt-dlp"});
-  s.child.on("close",code=>{
+
+  child.stdout?.on("data",d=>handle(String(d)));
+  child.stderr?.on("data",d=>handle(String(d)));
+  child.on("error",e=>{s.lastError=e.message;s.message="Error al iniciar yt-dlp"});
+
+  child.on("close",code=>{
+    settled=true; clearTimeout(watchdog);
     if(!s.active||s.stopping) return;
     const failed=code!==0 || /Requested format is not available|No video formats found|n challenge solving failed|ERROR:/i.test(output);
+
     if(failed && attempt<profiles.length-1){
       console.log("LIVE: intento",attempt+1,"falló. Probando siguiente extractor...");
       s.lastError=null;
-      setTimeout(()=>launchLiveDownloader(s,attempt+1),1200);
+      setTimeout(()=>launchLiveDownloader(s,attempt+1),800);
       return;
     }
+
     if(code!==0){
       s.lastError=(output.slice(-1500)||"yt-dlp terminó con código "+code);
-      s.message="No se pudo obtener ningún formato del LIVE.";
-      console.error("LIVE FALLÓ DESPUÉS DE TODOS LOS INTENTOS. Revisa /health y la versión de yt-dlp.");
+      s.message="No se pudo conectar al LIVE. Revisa si el enlace sigue EN VIVO o es público.";
+      console.error("LIVE FALLÓ:",s.lastError);
     }
   });
 }
