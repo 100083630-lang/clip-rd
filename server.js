@@ -1,3 +1,17 @@
+
+const {exec} = require('child_process');
+const path = require('path');
+function quemarMarca(input, output, cb){
+  let filtro = "drawbox=x=0:y=0:w=iw:h=ih:color=#A020F0@1:t=8,drawtext=text='@ORIGEN_SIMPLE - CLIPRD':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=28:fontcolor=white:box=1:boxcolor=#A020F0@1:boxborderw=12:x=10:y=10,drawtext=text='SIGUEME PARA MAS':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=28:fontcolor=white:box=1:boxcolor=black@1:boxborderw=12:x=(w-text_w)/2:y=h-60,drawtext=text='@ORIGEN_SIMPLE':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=24:fontcolor=white@0.85:borderw=2:bordercolor=black:x=w-text_w-20:y=h-110";
+  let cmd = 'ffmpeg -y -i "' + input + '" -vf "' + filtro + '" -c:a copy "' + output + '"';
+  console.log('QUEMANDO:', output);
+  exec(cmd, (err, stdout, stderr)=>{
+    if(err){ console.log('Error quemando:', stderr); return cb(err); }
+    cb(null, output);
+  });
+}
+global.quemarMarca = quemarMarca;
+
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -208,4 +222,17 @@ app.post("/live/stop",(req,res)=>{
 });
 
 app.use((req,res,next)=>{if(req.method==="GET")return res.sendFile(path.join(__dirname,"public","index.html"));next();});
+
+app.get('/descargar-quemado', (req, res)=>{
+  let file = req.query.file || req.query.url || req.query.src;
+  if(!file) return res.status(400).send('Falta file');
+  let input = path.join(__dirname, file);
+  if(!fs.existsSync(input)) input = file;
+  let output = input.replace(/\.mp4$/, '') + '-QUEMADO.mp4';
+  quemarMarca(input, output, (err)=>{
+    if(err) return res.status(500).send('Error quemando: '+err.message);
+    res.download(output);
+  });
+});
+
 app.listen(PORT,"127.0.0.1",()=>console.log("CLIPRD 5.0 listo en http://127.0.0.1:"+PORT));
