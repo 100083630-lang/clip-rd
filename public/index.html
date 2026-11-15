@@ -58,4 +58,120 @@ function closeModal(){$("#modal").classList.remove("open");$("#modalVideo").paus
 async function copyDescription(){if(!currentClip)return;await navigator.clipboard.writeText((currentClip.titulo_viral||currentClip.title)+"\n\n"+(currentClip.descripcion||"")+"\n\n"+(currentClip.hashtags||""));toast("✅ Copiado al portapapeles")}
 function toast(t){$("#toast").textContent=t;$("#toast").classList.add("show");setTimeout(()=>$("#toast").classList.remove("show"),2200)}
 health();loadClips();setInterval(health,10000);
-</script></body></html>
+</script>
+<!-- CLIPRD PRO ADDON: añadido sin borrar el sistema existente -->
+<style id="cliprd-pro-addon-style">
+#dashboard{display:none!important}
+#cliprdProDashboard{display:none}.view.pro-active{display:block}
+.proHero{display:flex;justify-content:space-between;gap:20px;align-items:flex-end;margin-bottom:22px}.proHero h1{font-size:clamp(30px,5vw,54px);margin:0;letter-spacing:-2px}.proHero p{color:#aaa5b8;margin:8px 0 0}.proAccent{background:linear-gradient(90deg,#a855f7,#ec4899);-webkit-background-clip:text;background-clip:text;color:transparent}
+.proGrid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.proStat{background:#17171f;border:1px solid #ffffff12;border-radius:14px;padding:18px;box-shadow:0 16px 45px #0005}.proStat .k{font-size:11px;letter-spacing:1px;color:#9792a5}.proStat .v{font-size:30px;font-weight:950;margin:7px 0}.proStat .s{font-size:12px;color:#a8a2b7}
+.proPanel{background:#17171f;border:1px solid #ffffff12;border-radius:14px;padding:18px;margin-top:16px}.proPanel h3{margin:0 0 14px}.goalHead{display:flex;justify-content:space-between;gap:10px;align-items:center}.goalBar{height:13px;border-radius:999px;background:#09090d;overflow:hidden;margin:13px 0}.goalBar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#a855f7,#ec4899);border-radius:inherit;transition:.35s}
+.proCols{display:grid;grid-template-columns:1fr 1fr;gap:16px}.proList{display:grid;gap:10px}.proRow{display:grid;grid-template-columns:58px 1fr auto;gap:10px;align-items:center;background:#0d0d13;border:1px solid #ffffff0c;border-radius:12px;padding:8px}.proRow img,.proThumb{width:58px;height:48px;border-radius:9px;object-fit:cover;background:#262632}.proRow b{font-size:13px}.proMeta{font-size:11px;color:#918ba1;margin-top:3px}.proMiniBtn{border:0;border-radius:10px;padding:8px 10px;background:#a855f7;color:white;font-weight:800}
+.weekChart{height:190px;display:flex;align-items:end;justify-content:space-between;gap:8px;padding-top:10px}.weekBar{flex:1;min-width:28px;display:flex;flex-direction:column;align-items:center;gap:7px;color:#9690a2;font-size:11px;cursor:pointer}.weekBar i{display:block;width:100%;min-height:8px;border-radius:9px 9px 3px 3px;background:linear-gradient(180deg,#ec4899,#a855f7);transition:.2s}.weekBar:hover i{filter:brightness(1.2);transform:translateY(-3px)}
+.proToolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}.proFilters,.proSort{display:flex;gap:8px;flex-wrap:wrap}.proFilter,.proSelect{background:#17171f;border:1px solid #ffffff18;color:#eee;border-radius:10px;padding:9px 12px}.proFilter.active{background:#a855f7;border-color:#a855f7}.proCount{font-size:13px;color:#a39db1}
+.aiBtn{background:linear-gradient(135deg,#a855f7,#ec4899)!important;color:#fff!important}.aiModal{position:fixed;inset:0;background:#000c;z-index:999;display:none;align-items:center;justify-content:center;padding:18px}.aiModal.open{display:flex}.aiBox{width:min(820px,100%);max-height:90vh;overflow:auto;background:#17171f;border:1px solid #ffffff1c;border-radius:18px;padding:20px;box-shadow:0 30px 100px #000}.aiHead{display:flex;justify-content:space-between;gap:12px;align-items:center}.aiHead h2{margin:0}.aiSection{background:#0d0d13;border:1px solid #ffffff0c;border-radius:12px;padding:14px;margin-top:12px}.aiOptions{display:grid;gap:8px}.aiOption{padding:11px;border-radius:10px;background:#17171f;border:1px solid #ffffff0d}.aiActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.aiCopy,.aiUse{border:0;border-radius:10px;padding:9px 11px;font-weight:800}.aiCopy{background:#2a2934;color:#fff}.aiUse{background:#a855f7;color:#fff}
+@media(max-width:950px){.proGrid4{grid-template-columns:repeat(2,1fr)}.proCols{grid-template-columns:1fr}}@media(max-width:560px){.proGrid4{grid-template-columns:1fr}.proHero{align-items:flex-start;flex-direction:column}.proRow{grid-template-columns:50px 1fr}.proRow button{grid-column:2}.weekChart{gap:4px}}
+</style>
+<section class="view" id="cliprdProDashboard">
+  <div class="proHero"><div><h1>Bienvenido a <span class="proAccent">CLIPRD Pro</span></h1><p>Resumen de hoy, sin tener que buscar en Biblioteca.</p></div><button class="primary" onclick="try{showView('auto')}catch(e){console.error(e)}">✂ Crear clips</button></div>
+  <div class="proGrid4">
+    <div class="proStat"><div class="k">CLIPS TOTALES</div><div class="v" id="proTotal">0</div><div class="s">▲ Esta semana</div></div>
+    <div class="proStat"><div class="k">MEJOR SCORE</div><div class="v" id="proBest">0/100</div><div class="s">Tu clip más viral</div></div>
+    <div class="proStat"><div class="k">SIN PUBLICAR</div><div class="v" id="proUnpublished">0</div><div class="s">Listos para subir</div></div>
+    <div class="proStat"><div class="k">HOY</div><div class="v" id="proToday">0</div><div class="s">Clips creados hoy</div></div>
+  </div>
+  <div class="proPanel"><div class="goalHead"><b>META SEMANAL</b><b id="proGoalText">0 / 10</b></div><div class="goalBar"><i id="proGoalBar"></i></div><div id="proGoalMsg" class="muted"></div></div>
+  <div class="proCols">
+    <div class="proPanel"><h3>Para publicar hoy</h3><div class="proList" id="proScheduled"></div></div>
+    <div class="proPanel"><h3>Últimos 3 clips</h3><div class="proList" id="proLatest"></div></div>
+  </div>
+  <div class="proPanel"><h3>Esta semana - Dale click a un día</h3><div class="weekChart" id="proWeekChart"></div><div id="proWeekMsg" class="muted">Selecciona un día.</div></div>
+</section>
+<div class="aiModal" id="cliprdAiModal"><div class="aiBox"><div class="aiHead"><div><h2>✨ Mejorar con IA</h2><div class="muted" id="aiClipName"></div></div><button class="ghost" onclick="try{closeAiImprove()}catch(e){console.error(e)}">✕</button></div>
+<div class="aiSection"><div class="label">TÍTULO VIRAL</div><div class="aiOptions" id="aiTitles"></div><div class="aiActions"><button class="aiCopy" onclick="try{copyAi('titles')}catch(e){console.error(e)}">Copiar</button></div></div>
+<div class="aiSection"><div class="label">DESCRIPCIÓN PRO</div><div id="aiDescription" class="muted"></div><div class="aiActions"><button class="aiCopy" onclick="try{copyAi('description')}catch(e){console.error(e)}">Copiar</button></div></div>
+<div class="aiSection"><div class="label">PORTADA / HOOK</div><div id="aiHook" class="muted"></div><div class="aiActions"><button class="aiCopy" onclick="try{copyAi('hook')}catch(e){console.error(e)}">Copiar</button></div></div>
+</div></div>
+<script id="cliprd-pro-addon">
+(function(){
+'use strict';
+let __proClips=[],__proFilter='all',__proSort='recent',__aiClip=null,__aiData={};
+function safe(fn){try{return fn()}catch(e){console.error('CLIPRD Pro:',e);return null}}
+function normDate(v){try{return v?new Date(v):null}catch(e){return null}}
+function isToday(c){const d=normDate(c.createdAt||c.created_at||c.date||c.timestamp);if(!d)return false;const n=new Date();return d.toDateString()===n.toDateString()}
+function score(c){return Number(c.score_viral??c.viral??c.score??0)||0}
+function title(c){return String(c.titulo_viral||c.title||c.name||'Clip sin título')}
+function folder(c){return String(c.folder||c.carpeta||c.type||'Biblioteca')}
+function created(c){return normDate(c.createdAt||c.created_at||c.date||c.timestamp)?.getTime()||0}
+function published(c){return c.published===true||c.posted===true}
+function clipKey(c,i){return String(c.id||c.path||c.url||('clip-'+i))}
+function thumb(c){return c.coverUrl||c.thumbnail||c.thumb||c.poster||''}
+function allClips(){
+ const out=[]; const seen=new Set();
+ const add=a=>Array.isArray(a)&&a.forEach((c,i)=>{if(c&&typeof c==='object'){const k=clipKey(c,i);if(!seen.has(k)){seen.add(k);out.push(c)}}});
+ safe(()=>add(JSON.parse(localStorage.getItem('cliprd_clips')||'[]')));
+ safe(()=>add(window.clips));
+ safe(()=>add(window.state&&window.state.clips));
+ safe(()=>add(window.__clips));
+ return out;
+}
+function saveClips(){
+ safe(()=>localStorage.setItem('cliprd_clips',JSON.stringify(__proClips)));
+ safe(()=>{if(Array.isArray(window.clips))window.clips=__proClips});
+ safe(()=>{if(window.state&&Array.isArray(window.state.clips))window.state.clips=__proClips});
+}
+function renderDashboard(){
+ safe(()=>{
+  __proClips=allClips();
+  const total=__proClips.length,best=Math.max(0,...__proClips.map(score)),unpub=__proClips.filter(c=>!published(c)).length,today=__proClips.filter(isToday).length;
+  document.querySelector('#proTotal').textContent=total;document.querySelector('#proBest').textContent=best+'/100';document.querySelector('#proUnpublished').textContent=unpub;document.querySelector('#proToday').textContent=today;
+  const weekCount=clipsThisWeek();const pct=Math.min(100,weekCount*10);document.querySelector('#proGoalText').textContent=weekCount+' / 10';document.querySelector('#proGoalBar').style.width=pct+'%';
+  document.querySelector('#proGoalMsg').textContent=weekCount>=10?'¡Meta cumplida! Eres una máquina.':'Te faltan '+Math.max(0,10-weekCount)+' para cumplir la meta.';
+  const scheduled=__proClips.filter(c=>isScheduledToday(c));document.querySelector('#proScheduled').innerHTML=scheduled.length?scheduled.map((c,i)=>proRow(c,i,false)).join(''):'<div class="muted">No tienes nada programado hoy. Crea un clip y prográmalo.</div>';
+  const latest=[...__proClips].sort((a,b)=>created(b)-created(a)).slice(0,3);document.querySelector('#proLatest').innerHTML=latest.length?latest.map((c,i)=>proRow(c,i,true)).join(''):'<div class="muted">Todavía no hay clips recientes.</div>';
+  renderWeek();
+ });
+}
+function clipsThisWeek(){const now=new Date(),start=new Date(now);start.setHours(0,0,0,0);start.setDate(now.getDate()-((now.getDay()+6)%7));return __proClips.filter(c=>{const d=normDate(c.createdAt||c.created_at||c.date||c.timestamp);return d&&d>=start}).length}
+function isScheduledToday(c){const v=c.scheduledFor||c.scheduled_for||c.publishDate||c.publish_date||c.programmedFor;if(!v)return false;const d=normDate(v);return d&&isToday({createdAt:d})}
+function proRow(c,i,showPublish){const t=title(c),im=thumb(c);return '<div class="proRow">'+(im?'<img src="'+escAttr(im)+'">':'<div class="proThumb"></div>')+'<div><b>'+escHtml(t.slice(0,30)+(t.length>30?'…':''))+'</b><div class="proMeta">🔥 '+score(c)+'/100 · '+escHtml(folder(c))+'</div></div>'+(showPublish?'<button class="proMiniBtn" data-pro-publish="'+i+'">Publicar</button>':'')+'</div>'}
+function renderWeek(){const days=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];const now=new Date(),monday=new Date(now);monday.setHours(0,0,0,0);monday.setDate(now.getDate()-((now.getDay()+6)%7));const counts=days.map((_,i)=>__proClips.filter(c=>{const d=normDate(c.createdAt||c.created_at||c.date||c.timestamp);const s=new Date(monday);s.setDate(monday.getDate()+i);return d&&d.toDateString()===s.toDateString()}).length);const max=Math.max(1,...counts);document.querySelector('#proWeekChart').innerHTML=counts.map((n,i)=>'<div class="weekBar" data-week-day="'+i+'"><i style="height:'+Math.max(8,Math.round(n/max*140))+'px"></i><span>'+days[i]+'</span></div>').join('');document.querySelectorAll('[data-week-day]').forEach(el=>el.onclick=()=>{const i=Number(el.dataset.weekDay);document.querySelector('#proWeekMsg').textContent='El '+days[i]+' hiciste '+counts[i]+' clip(s).'});}
+function escHtml(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function escAttr(s){return escHtml(s)}
+function decorateLibrary(){
+ safe(()=>{
+  const lib=document.querySelector('#library');if(!lib)return;
+  let bar=document.querySelector('#cliprdProToolbar');if(!bar){bar=document.createElement('div');bar.id='cliprdProToolbar';bar.className='proToolbar';const grid=document.querySelector('#clips');if(grid)grid.parentNode.insertBefore(bar,grid)}
+  bar.innerHTML='<div class="proFilters"><button class="proFilter" data-pf="all">Todos</button><button class="proFilter" data-pf="unpublished">Sin publicar</button><button class="proFilter" data-pf="published">Publicados</button><button class="proFilter" data-pf="today">Hoy</button></div><div class="proSort"><select id="proSortSelect" class="proSelect"><option value="recent">Más reciente</option><option value="score">Mayor Score</option><option value="title">Título A-Z</option></select><span class="proCount" id="proCount">Mostrando 0 de 0 clips</span></div>';
+  bar.querySelectorAll('[data-pf]').forEach(b=>b.onclick=()=>{__proFilter=b.dataset.pf;renderLibraryPro()});bar.querySelector('#proSortSelect').onchange=e=>{__proSort=e.target.value;renderLibraryPro()};renderLibraryPro();
+ });
+}
+function filtered(){let a=[...__proClips];if(__proFilter==='unpublished')a=a.filter(c=>!published(c));if(__proFilter==='published')a=a.filter(published);if(__proFilter==='today')a=a.filter(isToday);if(__proSort==='score')a.sort((a,b)=>score(b)-score(a));else if(__proSort==='title')a.sort((a,b)=>title(a).localeCompare(title(b),'es'));else a.sort((a,b)=>created(b)-created(a));return a}
+function renderLibraryPro(){
+ safe(()=>{
+  const list=filtered(),grid=document.querySelector('#clips');if(!grid)return;document.querySelectorAll('[data-pf]').forEach(b=>b.classList.toggle('active',b.dataset.pf===__proFilter));const count=document.querySelector('#proCount');if(count)count.textContent='Mostrando '+list.length+' de '+__proClips.length+' clips';
+  if(!list.length){grid.innerHTML='<div class="panel empty">No hay clips con este filtro, chavo.</div>';return}
+  grid.innerHTML=list.map((c,i)=>'<article class="card clip" data-pro-clip="'+i+'"><div class="cover">'+(thumb(c)?'<img src="'+escAttr(thumb(c))+'">':'')+'<div class="score">🔥 '+score(c)+'/100</div></div><div class="clipbody"><div class="cliptitle">'+escHtml(title(c))+'</div><div class="muted">'+escHtml(folder(c))+' · '+Math.round(c.duration||0)+'s</div><div class="actions"><button class="primary small" data-pro-view="'+i+'">▶ Ver</button><button class="ghost small aiBtn" data-pro-ai="'+i+'">✨ Mejorar con IA</button></div></div></article>').join('');
+  grid.querySelectorAll('[data-pro-ai]').forEach(b=>b.onclick=()=>openAiImprove(list[Number(b.dataset.proAi)]));grid.querySelectorAll('[data-pro-view]').forEach(b=>b.onclick=()=>{const c=list[Number(b.dataset.proView)];try{if(window.openClip&&c.id)window.openClip(c.id);else window.open(c.url,'_blank')}catch(e){console.error(e)}})
+ });
+}
+window.openAiImprove=function(c){
+ safe(()=>{__aiClip=c;if(!c)return;const base=title(c),cat=folder(c);__aiData=makeAi(base,cat);document.querySelector('#aiClipName').textContent=base;document.querySelector('#aiTitles').innerHTML=__aiData.titles.map((t,i)=>'<div class="aiOption"><b>'+escHtml(t)+'</b><div class="aiActions"><button class="aiUse" data-use-title="'+i+'">Usar este título</button></div></div>').join('');document.querySelector('#aiDescription').textContent=__aiData.description;document.querySelector('#aiHook').textContent=__aiData.hook;document.querySelectorAll('[data-use-title]').forEach(b=>b.onclick=()=>useAiTitle(__aiData.titles[Number(b.dataset.useTitle)]));document.querySelector('#cliprdAiModal').classList.add('open')});
+}
+window.closeAiImprove=function(){safe(()=>document.querySelector('#cliprdAiModal').classList.remove('open'))}
+function makeAi(base,cat){const clean=base.replace(/\s+/g,' ').trim();const short=clean.length>48?clean.slice(0,48).trim():clean;return {prompt:'Eres experto en contenido viral dominicano para TikTok/Reels/Shorts. Dame para este clip: 3 títulos con gancho que no pasen de 60 caracteres, 1 descripción pro con CTA y 8 hashtags en tendencia RD, y 1 idea de portada con texto de 3 palabras máximo, colores de alto contraste y emoción clara. Tono: dominicano, directo, sin cringe, sin sonar a robot. Tema del clip: '+clean,titles:[short+' 👀', 'Ojo con esto: '+short.slice(0,38), short+' 🔥'],description:'Esto fue lo que pasó en '+short+'. Mira el momento completo y dime: ¿tú qué harías?\\n\\nGuárdalo y compártelo con quien tiene que verlo. #ClipRD #RD #Dominicana #Viral #TikTokRD #ReelsRD #Shorts #'+cat.replace(/[^a-zA-Z0-9]/g,'') ,hook:'PORTADA: texto grande “NO ME DIGAS” (3 palabras máximo), expresión de sorpresa clara, contraste morado/rosado con amarillo. Primeros 3 segundos: entra directo al momento más fuerte, sin intro ni silencio.'}}
+window.copyAi=function(type){safe(async()=>{const t=type==='titles'?__aiData.titles.join('\\n'):__aiData[type]||'';if(navigator.clipboard)await navigator.clipboard.writeText(t);if(window.toast)window.toast('✅ Copiado');else alert('Copiado')})}
+function useAiTitle(t){safe(()=>{if(!__aiClip)return;__aiClip.titulo_viral=t;__aiClip.title=t;saveClips();renderDashboard();renderLibraryPro();if(window.toast)window.toast('🔥 Título actualizado');closeAiImprove()})}
+function hookExisting(){
+ safe(()=>{
+  const oldShow=window.showView;window.showView=function(id){try{if(id==='dashboard'){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active','pro-active'));const p=document.querySelector('#cliprdProDashboard');if(p)p.classList.add('active','pro-active');renderDashboard();return}if(oldShow)oldShow(id);if(id==='library'){setTimeout(()=>{__proClips=allClips();decorateLibrary()},80)}}catch(e){console.error(e)}};
+  document.querySelectorAll('.nav').forEach(b=>{const v=b.dataset.view;if(v==='dashboard')b.onclick=()=>window.showView('dashboard');if(v==='library')b.onclick=()=>window.showView('library')});
+ });
+}
+window.initDashboardPro=function(){safe(()=>{__proClips=allClips();hookExisting();renderDashboard();decorateLibrary();return {ok:true,clips:__proClips.length}})}
+const oldLoad=window.loadClips;window.loadClips=async function(){try{if(oldLoad)await oldLoad();__proClips=allClips();decorateLibrary();renderDashboard()}catch(e){console.error(e)}};
+setTimeout(()=>safe(()=>window.initDashboardPro()),100);
+})();
+</script>
+
+</body></html>
