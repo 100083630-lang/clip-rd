@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
+import { fileURLToPath } from "url";
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -122,7 +123,7 @@ export function registerLiveRoutes(app, deps) {
       log("🧠 Transcribiendo ventana LIVE para detectar contexto, no solo volumen.");
       await run("ffmpeg",["-y","-hide_banner","-loglevel","error","-f","concat","-safe","0","-i",concatFile,"-vn","-ac","1","-ar","16000","-c:a","pcm_s16le",wavFile],()=>{},{timeout:90000});
       const python=process.env.CLIPRD_PYTHON|| (process.platform==="win32"?"python":"python3");
-      const transcriptResult=await run(python,[path.join(path.dirname(new URL(import.meta.url).pathname),"transcribir_live.py"),wavFile],()=>{},{timeout:12*60*1000});
+      const transcriptResult=await run(python,[path.join(path.dirname(fileURLToPath(import.meta.url)),"transcribir_live.py"),wavFile],()=>{},{timeout:12*60*1000});
       const transcript=JSON.parse(transcriptResult.stdout.trim().split(/\r?\n/).filter(Boolean).pop());
       const words=(transcript.text||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
       const groups=[
