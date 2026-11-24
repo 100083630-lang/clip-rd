@@ -34,8 +34,7 @@ export function registerLiveRoutes(app, deps) {
     } catch {}
     return url;
   };
-  const safeName = value => String(value).replace(/[^a-zA-Z0-9_-]/g,"-").slice(0,70);
-  const listSegments = () => {
+    const listSegments = () => {
     if(!state.segmentDir || !fs.existsSync(state.segmentDir)) return [];
     return fs.readdirSync(state.segmentDir)
       .filter(name=>/^seg-\d+\.ts$/.test(name))
@@ -154,7 +153,17 @@ export function registerLiveRoutes(app, deps) {
       fs.rmSync(concatFile,{force:true}); fs.rmSync(wavFile,{force:true});
       if(!fs.existsSync(output) || fs.statSync(output).size<250000)
         throw new Error("El archivo generado no superó la validación de tamaño.");
-      const thumbs=await makeThumbs(output,base,0,45);
+      const probeResult=await run("ffprobe",[
+        "-v","error","-show_entries","stream=codec_type:format=duration",
+        "-of","json",output
+      ],()=>{},{timeout:30000});
+      const probeData=JSON.parse(probeResult.stdout||"{}");
+      const streamTypes=(probeData.streams||[]).map(stream=>stream.codec_type);
+      if(!streamTypes.includes("video") || !streamTypes.includes("audio"))
+        throw new Error("El MP4 no contiene simultáneamente pista de video y audio.");
+      const clipDuration=Number(probeData.format?.duration||0);
+      if(clipDuration<30) throw new Error("El MP4 quedó incompleto: duración menor de 30 segundos.");
+      const thumbs=await makeThumbs(output,base,0,clipDuration);
       const meta=viralMeta(score,motive+" · "+(transcript.text||"").slice(0,180),state.title,new Date().toISOString().slice(11,19));
       addClip(publicClip(path.basename(output),meta.titulo_viral,0,45,thumbs,{...meta,type:"LIVE",source:"LIVE"}));
       state.clips++;
@@ -215,7 +224,7 @@ export function registerLiveRoutes(app, deps) {
       const proc=spawn("ffmpeg",args,{windowsHide:true,stdio:["ignore","ignore","pipe"]});
       state.process=proc; state.status="recording";
       proc.stderr.on("data",chunk=>log(String(chunk).trim()));
-      proc.on("error",error=>{if(state.active){state.status="error";log("FFmpeg: "+error.message);}});
+      proc.on("error",error=>{if(state.active){state.status="error";state.active=false;if(state.timer)clearInterval(state.timer);state.timer=null;log("FFmpeg: "+error.message);}});
       proc.on("close",code=>{
         if(state.active) {
           state.status=code===0?"stopped":"error";
