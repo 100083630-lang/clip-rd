@@ -1,6 +1,5 @@
 
-const {exec} = require('child_process');
-const path = require('path');
+import { exec, spawn } from "child_process";
 function quemarMarca(input, output, cb){
   let filtro = "drawbox=x=0:y=0:w=iw:h=ih:color=#A020F0@1:t=8,drawtext=text='@ORIGEN_SIMPLE - CLIPRD':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=28:fontcolor=white:box=1:boxcolor=#A020F0@1:boxborderw=12:x=10:y=10,drawtext=text='SIGUEME PARA MAS':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=28:fontcolor=white:box=1:boxcolor=black@1:boxborderw=12:x=(w-text_w)/2:y=h-60,drawtext=text='@ORIGEN_SIMPLE':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=24:fontcolor=white@0.85:borderw=2:bordercolor=black:x=w-text_w-20:y=h-110";
   let cmd = 'ffmpeg -y -i "' + input + '" -vf "' + filtro + '" -c:a copy "' + output + '"';
@@ -10,14 +9,13 @@ function quemarMarca(input, output, cb){
     cb(null, output);
   });
 }
-global.quemarMarca = quemarMarca;
+globalThis.quemarMarca = quemarMarca;
 
 import express from "express";
 import { registerLiveRoutes } from "./live-engine.js";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
-import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
 const __filename=fileURLToPath(import.meta.url);
