@@ -117,7 +117,7 @@ export function registerLiveRoutes(app, deps) {
       const concatFile=path.join(state.segmentDir,base+".txt");
       const output=path.join(dirs.clips,base+".mp4");
       const selected=windowSegments.slice(-9);
-      fs.writeFileSync(concatFile,selected.map(file=>"file '"+file.replace(/\\\/g,"/").replace(/'/g,"'\\''")+"'").join("\n"),"utf8");
+      fs.writeFileSync(concatFile,selected.map(file=>"file '"+file.split(path.sep).join("/").replace(/'/g,"'\\''")+"'").join("\n"),"utf8");
       log("🔥 Momento seleccionado · preparando clip de video y audio.");
       await run("ffmpeg",[
         "-y","-f","concat","-safe","0","-i",concatFile,
