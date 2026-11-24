@@ -21,3 +21,5 @@ jobs:
         run: npm run build
       - name: Validate Python syntax
         run: python -m py_compile transcribir_live.py
+      - name: Build production Docker image
+        run: docker build --tag cliprd-live-ci .
