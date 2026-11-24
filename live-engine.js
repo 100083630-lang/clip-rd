@@ -71,8 +71,8 @@ export function registerLiveRoutes(app, deps) {
       "-f","null","-"
     ],()=>{},{timeout:25000});
     const raw=result.stderr||"";
-    const mean=Number((raw.match(/mean_volume:\\s*(-?[\d.]+)/)||[])[1]);
-    const peak=Number((raw.match(/max_volume:\\s*(-?[\d.]+)/)||[])[1]);
+    const mean=Number((raw.match(/mean_volume:\s*(-?[\d.]+)/)||[])[1]);
+    const peak=Number((raw.match(/max_volume:\s*(-?[\d.]+)/)||[])[1]);
     const silence=(raw.match(/silence_start/g)||[]).length;
     const energy=Number.isFinite(mean)?Math.max(0,Math.min(1,(mean+45)/40)):0;
     const peakEnergy=Number.isFinite(peak)?Math.max(0,Math.min(1,(peak+35)/35)):0;
