@@ -21,12 +21,13 @@ import { fileURLToPath } from "url";
 const __filename=fileURLToPath(import.meta.url);
 const __dirname=path.dirname(__filename);
 const app=express();
-const PORT=3847;
+const PORT=Number(process.env.PORT)||3847;
+const DATA_DIR=process.env.CLIPRD_DATA_DIR||__dirname;
 const dirs={
-  clips:path.join(__dirname,"clips"),
-  downloads:path.join(__dirname,"downloads"),
-  thumbs:path.join(__dirname,"thumbs"),
-  live:path.join(__dirname,"live-recordings")
+  clips:path.join(DATA_DIR,"clips"),
+  downloads:path.join(DATA_DIR,"downloads"),
+  thumbs:path.join(DATA_DIR,"thumbs"),
+  live:path.join(DATA_DIR,"live-recordings")
 };
 Object.values(dirs).forEach(d=>fs.mkdirSync(d,{recursive:true}));
 
@@ -38,7 +39,7 @@ app.use(express.static(path.join(__dirname,"public")));
 
 const jobs=new Map();
 let library=[];
-const libraryFile=path.join(__dirname,"library.json");
+const libraryFile=path.join(DATA_DIR,"library.json");
 try{if(fs.existsSync(libraryFile))library=JSON.parse(fs.readFileSync(libraryFile,"utf8"));}catch{library=[];}
 function saveLibrary(){try{fs.writeFileSync(libraryFile,JSON.stringify(library,null,2));}catch{}}
 
@@ -67,7 +68,7 @@ function run(cmd,args,onLine,{timeout=0}={}){
 }
 function ytBaseArgs(){
   const args=["--ignore-config","--no-playlist","--newline","--socket-timeout","20","--retries","3","--fragment-retries","3","--extractor-retries","3"];
-  const cookies=path.join(__dirname,"cookies.txt");
+  const cookies=path.join(DATA_DIR,"cookies.txt");
   if(fs.existsSync(cookies))args.push("--cookies",cookies);
   args.push("--extractor-args","youtube:player_client=web_safari");
   args.push("--extractor-args","youtube:po_token=web_safari.gvs+auto");
@@ -168,4 +169,4 @@ app.get('/descargar-quemado', (req, res)=>{
   });
 });
 
-app.listen(PORT,"127.0.0.1",()=>console.log("CLIPRD 5.0 listo en http://127.0.0.1:"+PORT));
+app.listen(PORT,"0.0.0.0",()=>console.log("CLIPRD 5.0 listo en puerto "+PORT));
