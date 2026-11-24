@@ -1,0 +1,23 @@
+name: Validate CLIPRD LIVE
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [rebuild/live-engine-clean]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Node dependencies
+        run: npm install
+      - name: Validate JavaScript syntax
+        run: npm run build
+      - name: Validate Python syntax
+        run: python -m py_compile transcribir_live.py
