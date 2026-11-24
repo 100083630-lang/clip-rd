@@ -12,6 +12,5 @@ services:
       CLIPRD_PYTHON: /opt/venv/bin/python
     volumes:
       - cliprd-data:/var/data
-      - ./cookies.txt:/var/data/cookies.txt:ro
 volumes:
   cliprd-data:
