@@ -3,6 +3,7 @@ FROM node:22-bookworm-slim
 ENV NODE_ENV=production \
     CLIPRD_DATA_DIR=/var/data \
     CLIPRD_PYTHON=/opt/venv/bin/python \
+    PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
