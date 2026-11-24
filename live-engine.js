@@ -106,31 +106,55 @@ export function registerLiveRoutes(app, deps) {
       if(!measures.length) throw new Error("No se pudo analizar el audio de los segmentos recientes.");
       const best=measures.reduce((a,b)=>b.score>a.score?b:a,measures[0]);
       const avg=measures.reduce((n,x)=>n+x.score,0)/measures.length;
-      const score=Math.min(99,Math.round(best.score*.7+avg*.3));
-      log("Evaluación de momento · energía "+score+"/100 · pico "+(Number.isFinite(best.peak)?best.peak+" dB":"sin lectura"));
-      if(score<58) {
+      const acousticScore=Math.min(99,Math.round(best.score*.7+avg*.3));
+      log("Evaluación acústica · "+acousticScore+"/100 · pico "+(Number.isFinite(best.peak)?best.peak+" dB":"sin lectura"));
+      if(acousticScore<32) {
         state.status="recording";
-        log("Momento descartado: actividad insuficiente.");
+        log("Momento descartado: audio demasiado bajo o sin actividad.");
         return;
       }
       const base="live-"+Date.now()+"-"+(state.clips+1);
       const concatFile=path.join(state.segmentDir,base+".txt");
+      const wavFile=path.join(state.segmentDir,base+".wav");
       const output=path.join(dirs.clips,base+".mp4");
       const selected=windowSegments.slice(-9);
       fs.writeFileSync(concatFile,selected.map(file=>"file '"+file.split(path.sep).join("/").replace(/'/g,"'\\''")+"'").join("\n"),"utf8");
-      log("🔥 Momento seleccionado · preparando clip de video y audio.");
+      log("🧠 Transcribiendo ventana LIVE para detectar contexto, no solo volumen.");
+      await run("ffmpeg",["-y","-hide_banner","-loglevel","error","-f","concat","-safe","0","-i",concatFile,"-vn","-ac","1","-ar","16000","-c:a","pcm_s16le",wavFile],()=>{},{timeout:90000});
+      const python=process.env.CLIPRD_PYTHON|| (process.platform==="win32"?"python":"python3");
+      const transcriptResult=await run(python,[path.join(path.dirname(new URL(import.meta.url).pathname),"transcribir_live.py"),wavFile],()=>{},{timeout:12*60*1000});
+      const transcript=JSON.parse(transcriptResult.stdout.trim().split(/\r?\n/).filter(Boolean).pop());
+      const words=(transcript.text||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+      const groups=[
+        {name:"confrontación o discusión",terms:["pelea","callate","cállate","tu no sabes","mentira","mentiroso","ladron","ladron","respeta","problema","amenaza","vete de aqui","vete de ahi","te voy a","no me faltes","no te metas","que tu dices","que dijiste","diablo","carajo","maldito","insulto"]},
+        {name:"reacción o sorpresa",terms:["no puede ser","que fuerte","increible","increíble","wao","wow","dios mio","mi madre","en serio","no lo creo","que paso","que paso ahi","asombroso","sorprendido"]},
+        {name:"chisme o revelación",terms:["te voy a contar","nadie sabe","la verdad es","te lo dije","secreto","confesion","confesión","revelar","descubri","descubrí","me entere","me enteré","supuestamente","resulta que"]},
+        {name:"humor o momento viral",terms:["risas","jajaja","no aguanto","me muero","que risa","eso da risa","broma","relajo","payaso","loco"]}
+      ];
+      const matched=groups.map(group=>({...group,hits:group.terms.filter(term=>words.includes(term.normalize("NFD").replace(/[\u0300-\u036f]/g,"")))})).filter(group=>group.hits.length);
+      const semanticScore=Math.min(100,matched.reduce((sum,group)=>sum+Math.min(28,group.hits.length*14),0)+(words.includes("!")?8:0));
+      const score=Math.min(99,Math.round(acousticScore*.35+semanticScore*.65));
+      const motive=matched.length?matched.map(group=>group.name).join(", "):"conversación detectada por transcripción";
+      log("Transcripción ES · "+(transcript.text||"sin texto reconocido").slice(0,450));
+      log("Contexto detectado · "+motive+" · semántica "+semanticScore+"/100 · total "+score+"/100");
+      if(!transcript.text || score<48) {
+        fs.rmSync(concatFile,{force:true}); fs.rmSync(wavFile,{force:true});
+        state.status="recording";
+        log("Momento descartado: no alcanzó el umbral de contexto viral.");
+        return;
+      }
+      log("🔥 Momento contextual seleccionado · preparando clip con audio y video.");
       await run("ffmpeg",[
         "-y","-f","concat","-safe","0","-i",concatFile,
         "-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast",
         "-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart",
         output
       ],line=>{if(line.trim()) log(line.trim());},{timeout:180000});
-      fs.rmSync(concatFile,{force:true});
+      fs.rmSync(concatFile,{force:true}); fs.rmSync(wavFile,{force:true});
       if(!fs.existsSync(output) || fs.statSync(output).size<250000)
         throw new Error("El archivo generado no superó la validación de tamaño.");
       const thumbs=await makeThumbs(output,base,0,45);
-      const motive="actividad de audio sostenida y pico de intensidad";
-      const meta=viralMeta(score,motive,state.title,new Date().toISOString().slice(11,19));
+      const meta=viralMeta(score,motive+" · "+(transcript.text||"").slice(0,180),state.title,new Date().toISOString().slice(11,19));
       addClip(publicClip(path.basename(output),meta.titulo_viral,0,45,thumbs,{...meta,type:"LIVE",source:"LIVE"}));
       state.clips++;
       state.cooldownUntil=Date.now()+60000;
