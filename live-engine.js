@@ -37,8 +37,8 @@ export function registerLiveRoutes(app, deps) {
   const listSegments = () => {
     if(!state.segmentDir || !fs.existsSync(state.segmentDir)) return [];
     return fs.readdirSync(state.segmentDir)
-      .filter(name=>/^seg-\\d+\\.ts$/.test(name))
-      .sort((a,b)=>Number(a.match(/\\d+/)[0])-Number(b.match(/\\d+/)[0]))
+      .filter(name=>/^seg-\d+\.ts$/.test(name))
+      .sort((a,b)=>Number(a.match(/\d+/)[0])-Number(b.match(/\d+/)[0]))
       .map(name=>path.join(state.segmentDir,name));
   };
   const probe = async url => {
@@ -49,7 +49,7 @@ export function registerLiveRoutes(app, deps) {
         const result = await run("yt-dlp",[
           ...ytBaseArgs(),...profile.args,"--skip-download","--dump-single-json",url
         ],line=>{ if(line.trim()) log(line.trim()); },{timeout:60000});
-        const meta=JSON.parse(result.stdout.trim().split(/\\r?\\n/).filter(Boolean).pop());
+        const meta=JSON.parse(result.stdout.trim().split(/\r?\n/).filter(Boolean).pop());
         if(meta?.id) return {profile,meta};
       } catch(error) { last=error; log("Perfil "+profile.name+": "+error.message.slice(0,250)); }
     }
@@ -59,7 +59,7 @@ export function registerLiveRoutes(app, deps) {
     const result=await run("yt-dlp",[
       ...ytBaseArgs(),...profile.args,"--get-url","-f","best",url
     ],line=>{ if(line.trim()) log(line.trim().slice(0,400)); },{timeout:60000});
-    const urls=result.stdout.trim().split(/\\r?\\n/).map(x=>x.trim()).filter(x=>/^https?:\\/\\//i.test(x));
+    const urls=result.stdout.trim().split(/\r?\n/).map(x=>x.trim()).filter(x=>/^https?:\/\//i.test(x));
     if(!urls.length) throw new Error("YouTube no entregó una URL de video reproducible.");
     if(urls.length>1) log("YouTube entregó varias pistas; se utilizará el formato combinado disponible.");
     return urls[0];
@@ -71,8 +71,8 @@ export function registerLiveRoutes(app, deps) {
       "-f","null","-"
     ],()=>{},{timeout:25000});
     const raw=result.stderr||"";
-    const mean=Number((raw.match(/mean_volume:\\s*(-?[\\d.]+)/)||[])[1]);
-    const peak=Number((raw.match(/max_volume:\\s*(-?[\\d.]+)/)||[])[1]);
+    const mean=Number((raw.match(/mean_volume:\\s*(-?[\d.]+)/)||[])[1]);
+    const peak=Number((raw.match(/max_volume:\\s*(-?[\d.]+)/)||[])[1]);
     const silence=(raw.match(/silence_start/g)||[]).length;
     const energy=Number.isFinite(mean)?Math.max(0,Math.min(1,(mean+45)/40)):0;
     const peakEnergy=Number.isFinite(peak)?Math.max(0,Math.min(1,(peak+35)/35)):0;
@@ -110,7 +110,7 @@ export function registerLiveRoutes(app, deps) {
       const concatFile=path.join(state.segmentDir,base+".txt");
       const output=path.join(dirs.clips,base+".mp4");
       const selected=windowSegments.slice(-9);
-      fs.writeFileSync(concatFile,selected.map(file=>"file '"+file.replace(/\\\\/g,"/").replace(/'/g,"'\\''")+"'").join("\\n"),"utf8");
+      fs.writeFileSync(concatFile,selected.map(file=>"file '"+file.replace(/\\\/g,"/").replace(/'/g,"'\\''")+"'").join("\n"),"utf8");
       log("🔥 Momento seleccionado · preparando clip de video y audio.");
       await run("ffmpeg",[
         "-y","-f","concat","-safe","0","-i",concatFile,
@@ -175,7 +175,7 @@ export function registerLiveRoutes(app, deps) {
       const segmentPattern=path.join(folder,"seg-%06d.ts");
       const args=[
         "-hide_banner","-loglevel","warning","-i",streamUrl,
-        "-map","0:v:0","-map","0:a?","-c","copy",
+        "-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-force_key_frames","expr:gte(t,n_forced*5)",
         "-f","segment","-segment_format","mpegts","-segment_time","5",
         "-reset_timestamps","1","-segment_start_number","0",segmentPattern
       ];
