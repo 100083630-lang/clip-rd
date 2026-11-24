@@ -9,7 +9,7 @@ export function registerLiveRoutes(app, deps) {
   const state = {
     active:false, status:"idle", sourceUrl:null, videoId:null, title:"LIVE",
     startedAt:null, process:null, timer:null, clips:0, bytes:0, log:[],
-    segmentDir:null, lastCandidateAt:0, busy:false, profile:null
+    segmentDir:null, lastCandidateAt:0, busy:false, cooldownUntil:0, profile:null
   };
 
   const log = message => {
@@ -78,10 +78,17 @@ export function registerLiveRoutes(app, deps) {
     const peakEnergy=Number.isFinite(peak)?Math.max(0,Math.min(1,(peak+35)/35)):0;
     return {mean,peak,silence,score:Math.round(energy*45+peakEnergy*45+(silence===0?10:0))};
   };
+  const pruneSegments = segments => {
+    // Keep a short rolling buffer; never touch the newest 18 closed segments.
+    for(const old of segments.slice(0,Math.max(0,segments.length-18))) {
+      try { fs.unlinkSync(old); } catch {}
+    }
+  };
   const createCandidate = async () => {
-    if(!state.active || state.busy) return;
+    if(!state.active || state.busy || Date.now()<state.cooldownUntil) return;
     const segments=listSegments();
     state.bytes=segments.reduce((sum,file)=>sum+(fs.existsSync(file)?fs.statSync(file).size:0),0);
+    pruneSegments(segments);
     // A candidate is assembled only from closed, complete MPEG-TS segments.
     if(segments.length<9) return;
     const latest=segments[segments.length-1];
@@ -126,6 +133,7 @@ export function registerLiveRoutes(app, deps) {
       const meta=viralMeta(score,motive,state.title,new Date().toISOString().slice(11,19));
       addClip(publicClip(path.basename(output),meta.titulo_viral,0,45,thumbs,{...meta,type:"LIVE",source:"LIVE"}));
       state.clips++;
+      state.cooldownUntil=Date.now()+60000;
       state.status="recording";
       log("✅ Clip LIVE validado y guardado en la Biblioteca.");
     } catch(error) {
@@ -161,7 +169,7 @@ export function registerLiveRoutes(app, deps) {
     if(state.active) return res.status(409).json({error:"Ya hay un LIVE activo."});
     state.active=true; state.status="starting"; state.sourceUrl=normalizeUrl(sourceUrl);
     state.videoId=youtubeId(sourceUrl); state.startedAt=now(); state.clips=0; state.bytes=0;
-    state.log=[]; state.lastCandidateAt=0; state.busy=false;
+    state.log=[]; state.lastCandidateAt=0; state.busy=false; state.cooldownUntil=0;
     const folder=path.join(dirs.live,"session-"+Date.now());
     fs.mkdirSync(folder,{recursive:true}); state.segmentDir=folder;
     log("Iniciando motor LIVE nuevo · captura por segmentos cerrados.");
