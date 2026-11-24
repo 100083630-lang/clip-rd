@@ -1,0 +1,17 @@
+services:
+  cliprd:
+    build: .
+    container_name: cliprd-live
+    restart: unless-stopped
+    ports:
+      - "3847:3847"
+    environment:
+      NODE_ENV: production
+      PORT: "3847"
+      CLIPRD_DATA_DIR: /var/data
+      CLIPRD_PYTHON: /opt/venv/bin/python
+    volumes:
+      - cliprd-data:/var/data
+      - ./cookies.txt:/var/data/cookies.txt:ro
+volumes:
+  cliprd-data:
