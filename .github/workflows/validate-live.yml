@@ -28,8 +28,12 @@ jobs:
           docker run -d --name cliprd-live-smoke -p 3847:3847 cliprd-live-ci
           trap 'docker logs cliprd-live-smoke || true; docker rm -f cliprd-live-smoke || true' EXIT
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:3847/health; then
-              echo "Production container health check passed."
+            if curl --fail --silent http://127.0.0.1:3847/health >/tmp/cliprd-health.json; then
+              grep -q '"ok":true' /tmp/cliprd-health.json
+              curl --fail --silent http://127.0.0.1:3847/live/status >/tmp/cliprd-live.json
+              grep -q '"active":false' /tmp/cliprd-live.json
+              curl --fail --silent http://127.0.0.1:3847/api/clips >/dev/null
+              echo "Health, LIVE status and library API checks passed."
               exit 0
             fi
             sleep 2
