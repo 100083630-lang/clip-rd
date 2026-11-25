@@ -9,7 +9,8 @@ Aplicacion local para Windows. El motor LIVE se ejecuta en la computadora del us
 - Python 3.10 o superior
 - FFmpeg y FFprobe disponibles en PATH
 - Conexion a Internet para acceder a YouTube
-- yt-dlp (el instalador local intenta instalarlo con pip)
+
+El instalador crea un entorno Python aislado en `.venv` e instala ahi faster-whisper y yt-dlp. No necesita instalar esos paquetes en el Python global.
 
 ## Preparar por primera vez (Windows PowerShell)
 
@@ -20,7 +21,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\setup-local.ps1
 ```
 
-Si el instalador indica que falta Node.js, Python o FFmpeg, instala ese requisito, cierra y vuelve a abrir PowerShell y ejecuta el instalador otra vez.
+Si falta Node.js, Python o FFmpeg, instala ese requisito, cierra y vuelve a abrir PowerShell y ejecuta el instalador otra vez.
 
 ## Iniciar CLIPRD localmente
 
@@ -30,13 +31,13 @@ Si el instalador indica que falta Node.js, Python o FFmpeg, instala ese requisit
 
 Abre http://localhost:3847
 
-Para iniciar manualmente en otros sistemas:
+Para iniciar manualmente:
 ```bash
 npm install
 npm start
-``
+```
 
-Asegura que `python`, `ffmpeg`, `ffprobe` y `yt-dlp` esten en PATH y que las dependencias de `requirements-live.txt` esten instaladas.
+Asegura que `python`, `ffmpeg` y `ffprobe` esten en PATH y que las dependencias de `requirements-live.txt` esten instaladas en el entorno Python que uses. El lanzador de Windows configura automaticamente `.venv`.
 
 ## Datos y privacidad local
 
@@ -55,4 +56,4 @@ Si YouTube requiere autenticacion para un directo, configura las cookies localme
 
 ## Verificacion
 
-`npm run build` comprueba sintaxis de Node. GitHub Actions construye la imagen local Docker y hace una prueba de arranque del contenedor y sus rutas HTTP. Esa prueba automatica no sustituye una prueba con un YouTube LIVE real en la computadora del usuario.
+GitHub Actions valida sintaxis de Node y Python, construye la imagen Docker y hace pruebas de arranque y rutas HTTP. Esa prueba automatica no sustituye una prueba con un YouTube LIVE real en la computadora del usuario.
