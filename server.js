@@ -1,6 +1,5 @@
 
-const {exec} = require('child_process');
-const path = require('path');
+import { exec, spawn } from "child_process";
 function quemarMarca(input, output, cb){
   let filtro = "drawbox=x=0:y=0:w=iw:h=ih:color=#A020F0@1:t=8,drawtext=text='@ORIGEN_SIMPLE - CLIPRD':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=28:fontcolor=white:box=1:boxcolor=#A020F0@1:boxborderw=12:x=10:y=10,drawtext=text='SIGUEME PARA MAS':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=28:fontcolor=white:box=1:boxcolor=black@1:boxborderw=12:x=(w-text_w)/2:y=h-60,drawtext=text='@ORIGEN_SIMPLE':fontfile=C\\:/Windows/Fonts/arial.ttf:fontsize=24:fontcolor=white@0.85:borderw=2:bordercolor=black:x=w-text_w-20:y=h-110";
   let cmd = 'ffmpeg -y -i "' + input + '" -vf "' + filtro + '" -c:a copy "' + output + '"';
@@ -10,24 +9,25 @@ function quemarMarca(input, output, cb){
     cb(null, output);
   });
 }
-global.quemarMarca = quemarMarca;
+globalThis.quemarMarca = quemarMarca;
 
 import express from "express";
+import { registerLiveRoutes } from "./live-engine.js";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
-import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
 const __filename=fileURLToPath(import.meta.url);
 const __dirname=path.dirname(__filename);
 const app=express();
-const PORT=3847;
+const PORT=Number(process.env.PORT)||3847;
+const DATA_DIR=process.env.CLIPRD_DATA_DIR||__dirname;
 const dirs={
-  clips:path.join(__dirname,"clips"),
-  downloads:path.join(__dirname,"downloads"),
-  thumbs:path.join(__dirname,"thumbs"),
-  live:path.join(__dirname,"live-recordings")
+  clips:path.join(DATA_DIR,"clips"),
+  downloads:path.join(DATA_DIR,"downloads"),
+  thumbs:path.join(DATA_DIR,"thumbs"),
+  live:path.join(DATA_DIR,"live-recordings")
 };
 Object.values(dirs).forEach(d=>fs.mkdirSync(d,{recursive:true}));
 
@@ -39,11 +39,10 @@ app.use(express.static(path.join(__dirname,"public")));
 
 const jobs=new Map();
 let library=[];
-const libraryFile=path.join(__dirname,"library.json");
+const libraryFile=path.join(DATA_DIR,"library.json");
 try{if(fs.existsSync(libraryFile))library=JSON.parse(fs.readFileSync(libraryFile,"utf8"));}catch{library=[];}
 function saveLibrary(){try{fs.writeFileSync(libraryFile,JSON.stringify(library,null,2));}catch{}}
 
-let live={active:false,sourceUrl:null,startedAt:null,process:null,recording:null,timer:null,clips:0,status:"idle",log:[],bytes:0,lastSize:0,lastAnalyzed:0,cooldownUntil:0,videoId:null,title:"LIVE"};
 
 function id(){return Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8)}
 function now(){return new Date().toISOString()}
@@ -69,7 +68,7 @@ function run(cmd,args,onLine,{timeout=0}={}){
 }
 function ytBaseArgs(){
   const args=["--ignore-config","--no-playlist","--newline","--socket-timeout","20","--retries","3","--fragment-retries","3","--extractor-retries","3"];
-  const cookies=path.join(__dirname,"cookies.txt");
+  const cookies=path.join(DATA_DIR,"cookies.txt");
   if(fs.existsSync(cookies))args.push("--cookies",cookies);
   args.push("--extractor-args","youtube:player_client=web_safari");
   args.push("--extractor-args","youtube:po_token=web_safari.gvs+auto");
@@ -126,52 +125,12 @@ function publicClip(file,title,start,end,thumbs=[],extra={}){
 }
 function addClip(c){library.push(c);saveLibrary();}
 
-async function analyzeAudio(file,target){
-  try{
-    const r=await run("ffmpeg",["-hide_banner","-ss","0","-t","30","-i",file,"-af","astats=metadata=1:reset=1,volumedetect","-f","null","-"],l=>addLog(target,l.trim()),{timeout:45000});
-    const all=(r.stderr||"");
-    const max=Number((all.match(/max_volume:\s*(-?[\d.]+)/)||[])[1]);
-    if(Number.isFinite(max))return {maxDb:max};
-  }catch{}
-  return null;
-}
-function scoreFromDb(db){if(db>=-1)return 98;if(db>=-3)return 92;if(db>=-6)return 84;if(db>=-10)return 72;if(db>=-16)return 58;return 25;}
+registerLiveRoutes(app,{dirs,ytBaseArgs,ytProfiles,run,addClip,makeThumbs,viralMeta,publicClip,id,now});
 
-async function createLiveViralClip(){
-  if(!live.active||!live.recording||!fs.existsSync(live.recording))return;
-  const size=fs.statSync(live.recording).size;
-  live.bytes=size;
-  if(size<2_000_000||size===live.lastSize)return;
-  live.lastSize=size;
-  const elapsed=Math.floor((Date.now()-new Date(live.startedAt).getTime())/1000);
-  if(elapsed-live.lastAnalyzed<20)return;
-  live.lastAnalyzed=elapsed;
-  if(Date.now()<live.cooldownUntil)return;
-  live.status="analizando";
-  addLog(live,"Analizando energía del LIVE…");
-  const a=await analyzeAudio(live.recording,live);
-  const score=scoreFromDb(a?.maxDb??-30);
-  if(score<72){live.status="recording";addLog(live,"Sin pico suficiente · no se genera clip");return;}
-  const before=10,after=35,duration=before+after,start=Math.max(0,elapsed-before-duration);
-  const idx=live.clips+1,base="live-"+Date.now()+"-"+idx,filename=base+".mp4",output=path.join(dirs.clips,filename);
-  const motivo=score>=90?"pico fuerte de volumen + alta energía":"subida brusca de energía";
-  addLog(live,"🔥 Pico detectado · "+score+"/100 · creando clip");
-  try{
-    await run("ffmpeg",["-y","-analyzeduration","100M","-probesize","100M","-ss",String(start),"-i",live.recording,"-t",String(duration),"-map","0:v:0","-map","0:a?","-c:v","libx264","-preset","veryfast","-c:a","aac","-movflags","+faststart",output],l=>addLog(live,l.trim()),{timeout:120000});
-    if(fs.existsSync(output)&&fs.statSync(output).size>500000){
-      const thumbs=await makeThumbs(live.recording,base,start,duration);
-      const meta=viralMeta(score,motivo,live.title,new Date(start*1000).toISOString().slice(11,19));
-      addClip(publicClip(filename,meta.titulo_viral,start,start+duration,thumbs,{...meta,type:"LIVE"}));
-      live.clips++;live.cooldownUntil=Date.now()+60_000;live.status="recording";
-      addLog(live,"🔥 Clip viral listo y enviado a Biblioteca");
-    }
-  }catch(e){addLog(live,"No se pudo cortar todavía: "+e.message.slice(-300));live.status="recording";}
-}
 
 app.get("/health",(req,res)=>res.json({ok:true,service:"CLIPRD 5.0",version:"5.0.0",time:now()}));
 app.get("/api/clips",(req,res)=>res.json([...library].sort((a,b)=>(b.score_viral||0)-(a.score_viral||0)||b.createdAt.localeCompare(a.createdAt))));
 app.get("/api/jobs/:jobId",(req,res)=>res.json(jobs.get(req.params.jobId)||{error:"not found"}));
-app.get("/live/status",(req,res)=>res.json({active:live.active,sourceUrl:live.sourceUrl,videoId:live.videoId,startedAt:live.startedAt,status:live.status,clips:live.clips,bytes:live.bytes,elapsed:live.startedAt?Math.floor((Date.now()-new Date(live.startedAt))/1000):0,log:live.log.slice(-60)}));
 
 app.post("/auto-clips",(req,res)=>{
   const {sourceUrl,clipLength=45,maxClips=1}=req.body||{};
@@ -195,31 +154,6 @@ app.post("/auto-clips",(req,res)=>{
   }catch(e){job.status="error";job.message=e.message;addLog(job,e.message);}})();
 });
 
-app.post("/live/start",(req,res)=>{
-  const {sourceUrl,clipLength=45}=req.body||{};
-  if(!sourceUrl)return res.status(400).json({error:"sourceUrl requerido"});
-  if(live.active)return res.status(409).json({error:"Live ya activo"});
-  const stamp=Date.now(),recording=path.join(dirs.live,"live-"+stamp+".ts");
-  live={active:true,sourceUrl:normalizeYoutube(sourceUrl),startedAt:now(),process:null,recording,timer:null,clips:0,status:"starting",log:[],bytes:0,lastSize:0,lastAnalyzed:0,cooldownUntil:0,videoId:youtubeId(sourceUrl),title:"LIVE"};
-  addLog(live,"Conectando al LIVE desde ahora…");
-  (async()=>{try{
-    const access=await probeYoutube(live.sourceUrl,live);if(!live.active)return;
-    live.title=access.meta.title||"LIVE";live.status="recording";addLog(live,"🔴 REC · "+live.title);
-    const args=[...ytBaseArgs(),...access.profile.args,"--hls-use-mpegts","--retries","infinite","--fragment-retries","infinite","-o",recording,live.sourceUrl];
-    const p=command("yt-dlp",args);live.process=p;
-    p.stdout.on("data",d=>addLog(live,String(d).trim()));p.stderr.on("data",d=>addLog(live,String(d).trim()));
-    p.on("close",()=>{if(live.active){live.active=false;live.status="stopped";addLog(live,"Extractor detenido");}});
-  }catch(e){live.status="error";live.active=false;addLog(live,"LIVE NO INICIADO: "+e.message);}})();
-  live.timer=setInterval(()=>createLiveViralClip().catch(e=>addLog(live,e.message)),Math.max(15,Number(clipLength)||45)*1000);
-  res.json({active:true,message:"🟢 Live conectado. Analizando momentos virales",clipLength});
-});
-
-app.post("/live/stop",(req,res)=>{
-  if(!live.active)return res.json({active:false,status:"already stopped"});
-  live.status="stopping";addLog(live,"DETENIENDO LIVE…");clearInterval(live.timer);killTree(live.process);
-  setTimeout(()=>{live.active=false;live.status="stopped";addLog(live,"LIVE detenido");},800);
-  res.json({active:false,status:"stopping"});
-});
 
 app.use((req,res,next)=>{if(req.method==="GET")return res.sendFile(path.join(__dirname,"public","index.html"));next();});
 
@@ -235,4 +169,4 @@ app.get('/descargar-quemado', (req, res)=>{
   });
 });
 
-app.listen(PORT,"127.0.0.1",()=>console.log("CLIPRD 5.0 listo en http://127.0.0.1:"+PORT));
+app.listen(PORT,"0.0.0.0",()=>console.log("CLIPRD 5.0 listo en puerto "+PORT));

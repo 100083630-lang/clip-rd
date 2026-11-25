@@ -1,0 +1,42 @@
+name: Validate CLIPRD LIVE
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [rebuild/live-engine-clean]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Node dependencies
+        run: npm install
+      - name: Validate JavaScript syntax
+        run: npm run build
+      - name: Validate Python syntax
+        run: python -m py_compile transcribir_live.py
+      - name: Build production Docker image
+        run: docker build --tag cliprd-live-ci .
+      - name: Smoke test production container
+        run: |
+          docker run -d --name cliprd-live-smoke -p 3847:3847 cliprd-live-ci
+          trap 'docker logs cliprd-live-smoke || true; docker rm -f cliprd-live-smoke || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3847/health >/tmp/cliprd-health.json; then
+              grep -q '"ok":true' /tmp/cliprd-health.json
+              curl --fail --silent http://127.0.0.1:3847/live/status >/tmp/cliprd-live.json
+              grep -q '"active":false' /tmp/cliprd-live.json
+              curl --fail --silent http://127.0.0.1:3847/api/clips >/dev/null
+              echo "Health, LIVE status and library API checks passed."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Container did not become healthy in 60 seconds."
+          exit 1
